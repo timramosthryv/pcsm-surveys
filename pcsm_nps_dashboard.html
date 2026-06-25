@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PCSM NPS Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --orange: #F06623;
+    --navy:   #1B365D;
+    --bg:     #F4F5F7;
+    --card:   #FFFFFF;
+    --border: #E2E8F0;
+    --text:   #1A202C;
+    --muted:  #718096;
+    --green:  #38A169;
+    --yellow: #D69E2E;
+    --red:    #E53E3E;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  .header { background: #FFFFFF; color: var(--navy); padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid var(--orange); box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo { font-size: 22px; font-weight: 800; color: var(--orange); }
+  .header-title { font-size: 15px; font-weight: 600; color: var(--navy); }
+  .header-right { font-size: 12px; color: var(--muted); }
+
+  /* Upload Zone */
+  .upload-zone { margin: 28px 32px 0; background: var(--card); border: 2px dashed var(--border); border-radius: 10px; padding: 36px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--orange); background: #FFF7F2; }
+  .upload-icon { font-size: 36px; margin-bottom: 12px; }
+  .upload-label { font-size: 15px; font-weight: 600; color: var(--navy); }
+  .upload-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .upload-btn { display: inline-block; margin-top: 16px; background: var(--orange); color: #fff; padding: 10px 24px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+  #file-input { display: none; }
+
+  /* Main content */
+  .main { padding: 24px 32px 40px; display: none; }
+  .main.visible { display: block; }
+
+  /* KPI row */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: var(--card); border-radius: 10px; padding: 20px 22px; border-left: 4px solid var(--orange); }
+  .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+  .kpi-value { font-size: 32px; font-weight: 800; color: var(--navy); line-height: 1; }
+  .kpi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .kpi.green  { border-left-color: var(--green); }
+  .kpi.yellow { border-left-color: var(--yellow); }
+  .kpi.red    { border-left-color: var(--red); }
+
+  /* Charts row */
+  .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .card { background: var(--card); border-radius: 10px; padding: 22px 24px; }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 16px; }
+
+  /* Filters */
+  .filters { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .filter-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .filter-btn { padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--border); background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--muted); transition: all 0.15s; }
+  .filter-btn.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .filter-btn:hover:not(.active) { border-color: var(--navy); color: var(--navy); }
+  select.yr-select { padding: 6px 12px; border-radius: 6px; border: 1.5px solid var(--border); font-size: 12px; font-weight: 600; color: var(--navy); background: #fff; cursor: pointer; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: var(--navy); color: #fff; padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 700; }
+  tbody tr:nth-child(even) { background: #F8FAFC; }
+  tbody tr:hover { background: #EDF2F7; }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .nps-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 12px; }
+  .nps-high   { background: #C6F6D5; color: #276749; }
+  .nps-mid    { background: #FEFCBF; color: #7B341E; }
+  .nps-low    { background: #FED7D7; color: #9B2335; }
+  .bar-wrap { display: flex; gap: 2px; align-items: center; height: 14px; }
+  .bar-p  { background: var(--green); border-radius: 2px; height: 100%; }
+  .bar-pa { background: #CBD5E0;     border-radius: 2px; height: 100%; }
+  .bar-d  { background: var(--red);  border-radius: 2px; height: 100%; }
+
+  .nps-formula { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .section-divider { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin: 20px 0 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .loading { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:16px">
+    <img src="thryv_logo.png" alt="Thryv" style="height:40px;display:block">
+    <div style="width:1px;height:32px;background:rgba(0,0,0,0.12)"></div>
+    <span class="header-title">PCSM &middot; NPS Dashboard</span>
+  </div>
+  <div class="header-sub">Customer Success &amp; Enablement</div>
+</div>
+
+<!-- Upload Section -->
+<div id="upload-section">
+  <div class="upload-zone" id="drop-zone">
+    <div class="upload-icon">📊</div>
+    <div class="upload-label">Upload PCSM Surveys Workbook</div>
+    <div class="upload-sub">Drag &amp; drop your Excel file here, or click to browse</div>
+    <label class="upload-btn" for="file-input">Choose File</label>
+    <input type="file" id="file-input" accept=".xlsx,.xls">
+  </div>
+</div>
+
+<!-- Main Dashboard -->
+<div class="main" id="main-content">
+
+  <!-- Filters -->
+  <div class="filters" style="margin-top:0; padding-top:8px;">
+    <span class="filter-label">Year:</span>
+    <select class="yr-select" id="yr-filter"><option value="all">All Years</option></select>
+    <span class="filter-label" style="margin-left:10px;">Survey Type:</span>
+    <div id="type-filters"></div>
+  </div>
+
+  <!-- KPI Row -->
+  <div class="kpi-row" id="kpi-row">
+    <div class="kpi" id="kpi-nps">
+      <div class="kpi-label">Overall NPS</div>
+      <div class="kpi-value" id="kpi-nps-val">--</div>
+      <div class="kpi-sub" id="kpi-nps-sub">All time</div>
+    </div>
+    <div class="kpi" id="kpi-surveys">
+      <div class="kpi-label">Total Surveys</div>
+      <div class="kpi-value" id="kpi-surveys-val">--</div>
+      <div class="kpi-sub" id="kpi-surveys-sub"></div>
+    </div>
+    <div class="kpi green">
+      <div class="kpi-label">Promoters (9–10)</div>
+      <div class="kpi-value" id="kpi-promoters">--%</div>
+      <div class="kpi-sub" id="kpi-promoters-n"></div>
+    </div>
+    <div class="kpi red">
+      <div class="kpi-label">Detractors (0–6)</div>
+      <div class="kpi-value" id="kpi-detractors">--%</div>
+      <div class="kpi-sub" id="kpi-detractors-n"></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-title">Monthly NPS Trend</div>
+      <canvas id="trend-chart" height="90"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title">NPS by Survey Type</div>
+      <canvas id="type-chart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card">
+    <div class="card-title">Monthly Breakdown</div>
+    <div class="nps-formula">NPS = % Promoters (9–10) − % Detractors (0–6) · Scale: −100 to +100</div>
+    <br>
+    <div class="table-wrap">
+      <table id="monthly-table">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Survey Type</th>
+            <th>NPS Score</th>
+            <th>Promoters</th>
+            <th>Passives</th>
+            <th>Detractors</th>
+            <th>Total</th>
+            <th>Distribution</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Globals ──────────────────────────────────────────────────────────────────
+let allRows = [];
+let trendChart = null;
+let typeChart  = null;
+let activeTypes = new Set(['__all__']);
+const SURVEY_TYPES_ORDER = [];
+
+// ── Upload Handling ───────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()=> dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) processFile(e.target.files[0]); });
+dropZone.addEventListener('click', e => { if (e.target.tagName !== 'LABEL' && e.target.tagName !== 'INPUT') fileInput.click(); });
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets['PCSM Surveys'];
+      if (!ws) { alert('Sheet "PCSM Surveys" not found in this workbook.'); return; }
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+      parseRows(raw);
+      buildDashboard();
+      document.getElementById('upload-section').style.display = 'none';
+      document.getElementById('main-content').classList.add('visible');
+    } catch(err) {
+      alert('Could not read file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Date Parsing Helper ───────────────────────────────────────────────────────
+// Handles: Excel serial numbers, JS Date objects, YYYY-MM-DD, MM/DD/YYYY,
+// MM-DD-YYYY, and mm-dd-yy (2-digit year) strings.
+function xlToMonth(val) {
+  if (val === null || val === undefined || val === '') return null;
+
+  let d = null;
+
+  if (val instanceof Date) {
+    d = val;
+  } else if (typeof val === 'number') {
+    // Excel date serial → JS Date (Excel epoch is Dec 30, 1899)
+    d = new Date(Math.round((val - 25569) * 86400 * 1000));
+  } else {
+    const s = String(val).trim();
+    let m;
+    // YYYY-MM-DD
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return { yr: m[1], month: m[1] + '-' + m[2] };
+    // MM/DD/YYYY or M/D/YYYY
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) { const yr = m[3]; return { yr, month: yr + '-' + m[1].padStart(2,'0') }; }
+    // MM-DD-YYYY or M-D-YYYY (4-digit year)
+    m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (m) { const yr = m[3]; return { yr, month: yr + '-' + m[1].padStart(2,'0') }; }
+    // MM-DD-YY or M-D-YY (2-digit year — original Excel format 'mm-dd-yy')
+    m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
+    if (m) { const yr = '20' + m[3]; return { yr, month: yr + '-' + m[1].padStart(2,'0') }; }
+    return null;
+  }
+
+  if (!d || isNaN(d.getTime())) return null;
+  const yr = String(d.getUTCFullYear());
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return { yr, month: yr + '-' + mo };
+}
+
+// ── Data Parsing ──────────────────────────────────────────────────────────────
+function parseRows(raw) {
+  allRows = [];
+  // Row 0 is header: Date, EAID, Survey Type, Case Owner, Supervisor, Month Impacting, Score, Rebutal, Final Score
+  for (let i = 1; i < raw.length; i++) {
+    const r = raw[i];
+    if (!r || !r[0]) continue;
+
+    const dateVal = r[0];
+    if (dateVal === null || dateVal === undefined || dateVal === '') continue;
+
+    // Parse date — handles Excel serial numbers, JS Date objects, and string formats
+    const parsed = xlToMonth(dateVal);
+    if (!parsed) continue;
+    const { yr, month } = parsed;
+
+    const surveyType = String(r[2] || '').trim();
+    if (!surveyType) continue;
+
+    // Effective score: Final Score (col 8) if valid, else Score (col 6)
+    const toNum = v => {
+      if (v === null || v === undefined) return null;
+      const s = String(v).trim();
+      if (!s || s.toLowerCase() === 'n/a' || s.toLowerCase() === 'na') return null;
+      const n = parseFloat(s);
+      return isNaN(n) ? null : Math.round(n);
+    };
+
+    const finalScore = toNum(r[8]);
+    const rawScore   = toNum(r[6]);
+    const score = (finalScore !== null) ? finalScore : rawScore;
+    if (score === null) continue;
+
+    allRows.push({ month, yr, surveyType, score, owner: r[3], supervisor: r[4] });
+
+    if (!SURVEY_TYPES_ORDER.includes(surveyType)) SURVEY_TYPES_ORDER.push(surveyType);
+  }
+}
+
+// ── NPS Calculation ───────────────────────────────────────────────────────────
+function calcNPS(scores) {
+  const n = scores.length;
+  if (n === 0) return null;
+  const p = scores.filter(s => s >= 9).length;
+  const d = scores.filter(s => s <= 6).length;
+  return { nps: Math.round(((p - d) / n) * 100), promoters: p, passives: n - p - d, detractors: d, total: n };
+}
+
+function npsColor(v) {
+  if (v >= 50) return getComputedStyle(document.documentElement).getPropertyValue('--green').trim();
+  if (v >= 0)  return getComputedStyle(document.documentElement).getPropertyValue('--yellow').trim();
+  return getComputedStyle(document.documentElement).getPropertyValue('--red').trim();
+}
+
+function npsBadgeClass(v) {
+  if (v >= 50) return 'nps-high';
+  if (v >= 0)  return 'nps-mid';
+  return 'nps-low';
+}
+
+// ── Filtered Data ─────────────────────────────────────────────────────────────
+function getFilteredRows() {
+  const yr = document.getElementById('yr-filter').value;
+  return allRows.filter(r => {
+    if (yr !== 'all' && r.yr !== yr) return false;
+    if (!activeTypes.has('__all__') && !activeTypes.has(r.surveyType)) return false;
+    return true;
+  });
+}
+
+// ── Build Dashboard ───────────────────────────────────────────────────────────
+function buildDashboard() {
+  // Populate year filter
+  const years = [...new Set(allRows.map(r => r.yr))].sort();
+  const yrSel = document.getElementById('yr-filter');
+  yrSel.innerHTML = '<option value="all">All Years</option>';
+  years.forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = y; yrSel.appendChild(o); });
+  yrSel.addEventListener('change', refresh);
+
+  // Populate type filters
+  const tf = document.getElementById('type-filters');
+  tf.innerHTML = '';
+  const allBtn = document.createElement('button');
+  allBtn.className = 'filter-btn active';
+  allBtn.textContent = 'All';
+  allBtn.dataset.type = '__all__';
+  allBtn.addEventListener('click', () => {
+    activeTypes = new Set(['__all__']);
+    tf.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    allBtn.classList.add('active');
+    refresh();
+  });
+  tf.appendChild(allBtn);
+
+  SURVEY_TYPES_ORDER.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.textContent = t;
+    btn.dataset.type = t;
+    btn.addEventListener('click', () => {
+      if (activeTypes.has('__all__')) {
+        activeTypes = new Set([t]);
+        allBtn.classList.remove('active');
+      } else if (activeTypes.has(t)) {
+        activeTypes.delete(t);
+        if (activeTypes.size === 0) { activeTypes.add('__all__'); allBtn.classList.add('active'); }
+      } else {
+        activeTypes.add(t);
+      }
+      tf.querySelectorAll('.filter-btn[data-type!="__all__"]').forEach(b => {
+        b.classList.toggle('active', activeTypes.has(b.dataset.type));
+      });
+      refresh();
+    });
+    tf.appendChild(btn);
+  });
+
+  refresh();
+}
+
+function refresh() {
+  const rows = getFilteredRows();
+  updateKPIs(rows);
+  updateTrendChart(rows);
+  updateTypeChart(rows);
+  updateTable(rows);
+}
+
+// ── KPIs ──────────────────────────────────────────────────────────────────────
+function updateKPIs(rows) {
+  const all = rows.map(r => r.score);
+  const res = calcNPS(all);
+  if (!res) return;
+
+  const kpiNps = document.getElementById('kpi-nps');
+  const npsVal = document.getElementById('kpi-nps-val');
+  npsVal.textContent = (res.nps > 0 ? '+' : '') + res.nps;
+  npsVal.style.color = npsColor(res.nps);
+  kpiNps.style.borderLeftColor = npsColor(res.nps);
+
+  document.getElementById('kpi-surveys-val').textContent = res.total.toLocaleString();
+  document.getElementById('kpi-surveys-sub').textContent = [...new Set(rows.map(r => r.month))].length + ' months of data';
+
+  const pPct = Math.round((res.promoters / res.total) * 100);
+  const dPct = Math.round((res.detractors / res.total) * 100);
+  document.getElementById('kpi-promoters').textContent = pPct + '%';
+  document.getElementById('kpi-promoters-n').textContent = res.promoters + ' respondents';
+  document.getElementById('kpi-detractors').textContent = dPct + '%';
+  document.getElementById('kpi-detractors-n').textContent = res.detractors + ' respondents';
+}
+
+// ── Trend Chart ───────────────────────────────────────────────────────────────
+function updateTrendChart(rows) {
+  const byMonth = {};
+  rows.forEach(r => {
+    if (!byMonth[r.month]) byMonth[r.month] = [];
+    byMonth[r.month].push(r.score);
+  });
+  const months = Object.keys(byMonth).sort();
+  const npsData = months.map(m => { const res = calcNPS(byMonth[m]); return res ? res.nps : null; });
+  const labels  = months.map(m => {
+    const [y, mo] = m.split('-');
+    return new Date(parseInt(y), parseInt(mo)-1, 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+  });
+
+  if (trendChart) trendChart.destroy();
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'NPS',
+        data: npsData,
+        borderColor: '#F06623',
+        backgroundColor: 'rgba(240,102,35,0.08)',
+        borderWidth: 2.5,
+        tension: 0.35,
+        pointRadius: 4,
+        pointBackgroundColor: npsData.map(v => v === null ? '#999' : (v >= 50 ? '#38A169' : v >= 0 ? '#D69E2E' : '#E53E3E')),
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1.5,
+        fill: true,
+        spanGaps: true
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' NPS: ' + (ctx.parsed.y > 0 ? '+' : '') + ctx.parsed.y,
+            afterLabel: ctx => {
+              const m = months[ctx.dataIndex];
+              const res = calcNPS(byMonth[m]);
+              return res ? ['Promoters: ' + res.promoters + ' (' + Math.round(res.promoters/res.total*100) + '%)',
+                            'Passives:  ' + res.passives,
+                            'Detractors: ' + res.detractors + ' (' + Math.round(res.detractors/res.total*100) + '%)',
+                            'Total: ' + res.total] : [];
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: -100, max: 100,
+          grid: { color: '#EDF2F7' },
+          ticks: { callback: v => (v > 0 ? '+' : '') + v, font: { size: 11 } }
+        },
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// ── Type Chart ────────────────────────────────────────────────────────────────
+const TYPE_COLORS = ['#F06623','#1B365D','#38A169','#805AD5','#D69E2E','#E53E3E','#319795'];
+
+function updateTypeChart(rows) {
+  const byType = {};
+  rows.forEach(r => {
+    if (!byType[r.surveyType]) byType[r.surveyType] = [];
+    byType[r.surveyType].push(r.score);
+  });
+  const types   = Object.keys(byType).sort();
+  const npsVals = types.map(t => { const res = calcNPS(byType[t]); return res ? res.nps : null; });
+  const colors  = types.map((_, i) => TYPE_COLORS[i % TYPE_COLORS.length]);
+
+  if (typeChart) typeChart.destroy();
+  const ctx = document.getElementById('type-chart').getContext('2d');
+  typeChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: types.map(t => t.length > 14 ? t.substring(0,13) + '…' : t),
+      datasets: [{
+        data: npsVals,
+        backgroundColor: npsVals.map(v => v >= 50 ? 'rgba(56,161,105,0.8)' : v >= 0 ? 'rgba(214,158,46,0.8)' : 'rgba(229,62,62,0.8)'),
+        borderRadius: 5,
+        borderSkipped: false
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' NPS: ' + (ctx.parsed.x > 0 ? '+' : '') + ctx.parsed.x
+          }
+        }
+      },
+      scales: {
+        x: { min: -100, max: 100, grid: { color: '#EDF2F7' }, ticks: { callback: v => (v>0?'+':'') + v, font: { size: 11 } } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// ── Table ──────────────────────────────────────────────────────────────────────
+function fmtMonth(m) {
+  const [y, mo] = m.split('-');
+  return new Date(parseInt(y), parseInt(mo)-1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function updateTable(rows) {
+  // Build month x type breakdown
+  const data = {};  // data[month][type] = [scores]
+  rows.forEach(r => {
+    if (!data[r.month]) data[r.month] = {};
+    if (!data[r.month][r.surveyType]) data[r.month][r.surveyType] = [];
+    data[r.month][r.surveyType].push(r.score);
+  });
+
+  // Also compute overall per month
+  const monthly = {};
+  rows.forEach(r => {
+    if (!monthly[r.month]) monthly[r.month] = [];
+    monthly[r.month].push(r.score);
+  });
+
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+
+  const months = Object.keys(data).sort().reverse();
+
+  months.forEach(m => {
+    const types = Object.keys(data[m]).sort();
+
+    // Overall row
+    const mRes = calcNPS(monthly[m]);
+    if (mRes) {
+      const tr = document.createElement('tr');
+      tr.style.background = '#EDF2F7';
+      tr.style.fontWeight = '600';
+      const pBar = Math.round((mRes.promoters / mRes.total) * 100);
+      const dBar = Math.round((mRes.detractors / mRes.total) * 100);
+      const paBar = 100 - pBar - dBar;
+      tr.innerHTML =
+        '<td style="font-weight:700">' + fmtMonth(m) + '</td>' +
+        '<td style="color:#718096;font-size:12px">ALL TYPES</td>' +
+        '<td><span class="nps-badge ' + npsBadgeClass(mRes.nps) + '">' + (mRes.nps>0?'+':'') + mRes.nps + '</span></td>' +
+        '<td style="color:#38A169">' + mRes.promoters + ' <span style="color:#999;font-weight:400">(' + pBar + '%)</span></td>' +
+        '<td style="color:#718096">' + mRes.passives + '</td>' +
+        '<td style="color:#E53E3E">' + mRes.detractors + ' <span style="color:#999;font-weight:400">(' + dBar + '%)</span></td>' +
+        '<td>' + mRes.total + '</td>' +
+        '<td><div class="bar-wrap">' +
+          '<div class="bar-p"  style="width:' + pBar  + '%"></div>' +
+          '<div class="bar-pa" style="width:' + paBar + '%"></div>' +
+          '<div class="bar-d"  style="width:' + dBar  + '%"></div>' +
+        '</div></td>';
+      tbody.appendChild(tr);
+    }
+
+    // Per-type rows
+    types.forEach(t => {
+      const res = calcNPS(data[m][t]);
+      if (!res) return;
+      const pBar = Math.round((res.promoters / res.total) * 100);
+      const dBar = Math.round((res.detractors / res.total) * 100);
+      const paBar = 100 - pBar - dBar;
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td style="padding-left:20px;color:#718096;font-size:12px"></td>' +
+        '<td style="font-size:12px">' + t + '</td>' +
+        '<td><span class="nps-badge ' + npsBadgeClass(res.nps) + '">' + (res.nps>0?'+':'') + res.nps + '</span></td>' +
+        '<td style="color:#38A169">' + res.promoters + ' <span style="color:#999">(' + pBar + '%)</span></td>' +
+        '<td style="color:#718096">' + res.passives + '</td>' +
+        '<td style="color:#E53E3E">' + res.detractors + ' <span style="color:#999">(' + dBar + '%)</span></td>' +
+        '<td>' + res.total + '</td>' +
+        '<td><div class="bar-wrap">' +
+          '<div class="bar-p"  style="width:' + pBar  + '%"></div>' +
+          '<div class="bar-pa" style="width:' + paBar + '%"></div>' +
+          '<div class="bar-d"  style="width:' + dBar  + '%"></div>' +
+        '</div></td>';
+      tbody.appendChild(tr);
+    });
+  });
+}
+</script>
+</body>
+</html>

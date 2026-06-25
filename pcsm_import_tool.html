@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PCSM Survey Import Tool</title>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --orange: #F06623;
+  --navy:   #1B365D;
+  --bg:     #F4F5F7;
+  --card:   #FFFFFF;
+  --border: #E2E8F0;
+  --text:   #1A202C;
+  --muted:  #718096;
+  --green:  #38A169;
+  --red:    #E53E3E;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+.header { background: #FFFFFF; color: var(--navy); padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid var(--orange); box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+.logo   { font-size: 20px; font-weight: 800; color: var(--orange); }
+.header-title { font-size: 14px; font-weight: 600; color: var(--navy); }
+.header-sub   { font-size: 12px; color: var(--muted); }
+
+.container { max-width: 860px; margin: 32px auto; padding: 0 20px; }
+
+.step-row { display: flex; gap: 16px; margin-bottom: 20px; }
+.step { flex: 1; background: var(--card); border-radius: 10px; padding: 22px; border: 2px dashed var(--border); cursor: pointer; transition: border-color .2s, background .2s; position: relative; }
+.step:hover, .step.drag-over { border-color: var(--orange); background: #FFF7F2; }
+.step.done  { border-style: solid; border-color: var(--green); }
+.step.done .step-icon { color: var(--green); }
+.step-num  { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+.step-icon { font-size: 28px; margin-bottom: 8px; }
+.step-title { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+.step-sub   { font-size: 12px; color: var(--muted); }
+.step-file  { font-size: 12px; font-weight: 600; color: var(--green); margin-top: 8px; display: none; }
+.step.done .step-file { display: block; }
+input[type=file] { display: none; }
+
+.run-btn { width: 100%; padding: 14px; background: var(--navy); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .2s; margin-bottom: 20px; }
+.run-btn:hover:not(:disabled) { background: #244980; }
+.run-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.log-box { background: #1A202C; color: #A0AEC0; border-radius: 8px; padding: 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.7; min-height: 80px; display: none; margin-bottom: 20px; max-height: 260px; overflow-y: auto; }
+.log-box.visible { display: block; }
+.log-ok   { color: #68D391; }
+.log-warn { color: #F6AD55; }
+.log-err  { color: #FC8181; }
+.log-head { color: #90CDF4; font-weight: 700; }
+
+.preview-card { background: var(--card); border-radius: 10px; padding: 22px; display: none; margin-bottom: 20px; }
+.preview-card.visible { display: block; }
+.preview-title { font-size: 13px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 14px; }
+.preview-stats { display: flex; gap: 16px; margin-bottom: 16px; }
+.stat-pill { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.stat-new  { background: #C6F6D5; color: #276749; }
+.stat-dup  { background: #EDF2F7; color: #4A5568; }
+.stat-skip { background: #FED7D7; color: #9B2335; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { background: var(--navy); color: #fff; padding: 9px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+tbody tr:nth-child(even) { background: #F8FAFC; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.tag-mc    { background: #BEE3F8; color: #2C5282; }
+.tag-setup { background: #E9D8FD; color: #553C9A; }
+.tag-bc    { background: #FEFCBF; color: #7B341E; }
+.tag-other { background: #EDF2F7; color: #4A5568; }
+
+.dl-btn { width: 100%; padding: 14px; background: var(--orange); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; display: none; }
+.dl-btn.visible { display: block; }
+.dl-btn:hover { background: #d95c1e; }
+
+.reset-link { text-align: center; margin-top: 12px; font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: underline; display: none; }
+.reset-link.visible { display: block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:16px">
+    <img src="thryv_logo.png" alt="Thryv" style="height:40px;display:block">
+    <div style="width:1px;height:32px;background:rgba(0,0,0,0.12)"></div>
+    <span class="header-title">PCSM Survey Import Tool</span>
+  </div>
+  <div class="header-sub">Customer Success &amp; Enablement</div>
+</div>
+
+<div class="container">
+
+  <div class="step-row">
+    <!-- Step 1: PDF -->
+    <div class="step" id="step-pdf" onclick="document.getElementById('pdf-input').click()">
+      <div class="step-num">Step 1</div>
+      <div class="step-icon">📄</div>
+      <div class="step-title">Upload Weekly PDF</div>
+      <div class="step-sub">Drop the PCSM survey PDF here or click to browse</div>
+      <div class="step-file" id="pdf-name"></div>
+      <input type="file" id="pdf-input" accept=".pdf">
+    </div>
+
+    <!-- Step 2: Excel -->
+    <div class="step" id="step-xl" onclick="document.getElementById('xl-input').click()">
+      <div class="step-num">Step 2</div>
+      <div class="step-icon">📊</div>
+      <div class="step-title">Upload PCSM Surveys Excel</div>
+      <div class="step-sub">Drop your PCSM Surveys workbook here or click to browse</div>
+      <div class="step-file" id="xl-name"></div>
+      <input type="file" id="xl-input" accept=".xlsx,.xls">
+    </div>
+  </div>
+
+  <button class="run-btn" id="run-btn" disabled onclick="runImport()">Import Surveys into Spreadsheet</button>
+
+  <div class="log-box" id="log-box"></div>
+
+  <div class="preview-card" id="preview-card">
+    <div class="preview-title">Records to Add</div>
+    <div class="preview-stats" id="preview-stats"></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>EAID</th><th>Survey Type</th>
+            <th>Case Owner</th><th>Supervisor</th><th>Month Impacting</th><th>LtH Score</th>
+          </tr>
+        </thead>
+        <tbody id="preview-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <button class="dl-btn" id="dl-btn" onclick="downloadResult()">Download Updated Excel</button>
+  <div class="reset-link" id="reset-link" onclick="resetAll()">Start over with a new file</div>
+
+</div>
+
+<script>
+// ── PDF.js worker ─────────────────────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let pdfBytes  = null;
+let xlBytes   = null;
+let resultWb  = null;
+let toAddRows = [];
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+function setupDrop(zoneId, inputId, handler) {
+  const zone  = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', ()=> zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]);
+  });
+  input.addEventListener('change', e => { if (e.target.files[0]) handler(e.target.files[0]); });
+}
+
+function readFileAsArrayBuffer(file) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload  = e => res(e.target.result);
+    fr.onerror = rej;
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+setupDrop('step-pdf', 'pdf-input', async file => {
+  pdfBytes = await readFileAsArrayBuffer(file);
+  document.getElementById('step-pdf').classList.add('done');
+  document.getElementById('pdf-name').textContent = '✓ ' + file.name;
+  checkReady();
+});
+
+setupDrop('step-xl', 'xl-input', async file => {
+  xlBytes = await readFileAsArrayBuffer(file);
+  document.getElementById('step-xl').classList.add('done');
+  document.getElementById('xl-name').textContent = '✓ ' + file.name;
+  checkReady();
+});
+
+function checkReady() {
+  document.getElementById('run-btn').disabled = !(pdfBytes && xlBytes);
+}
+
+// ── Logging ───────────────────────────────────────────────────────────────────
+function log(msg, cls) {
+  const box = document.getElementById('log-box');
+  box.classList.add('visible');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── PDF Parsing ───────────────────────────────────────────────────────────────
+
+async function parsePDF(arrayBuffer) {
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  log('PDF loaded — ' + pdf.numPages + ' pages', 'log-head');
+
+  const records = [];
+  const seenKeys = new Set(); // key = "EAID|YYYY-MM-DD" — same account can appear in multiple months
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const pageRecords = extractFromPage(content, seenKeys);
+    records.push(...pageRecords);
+    log('  Page ' + pageNum + ': found ' + pageRecords.length + ' record(s)');
+  }
+
+  return records;
+}
+
+function extractFromPage(content, seenKeys) {
+  // Group items into lines by Y position (tolerance ±8 — wider than ±4 so that
+  // multi-word column headers and long wrapped cell values stay in the same line group)
+  const lineMap = [];
+  for (const item of content.items) {
+    const text = (item.str || '').trim();
+    if (!text) continue;
+    const y = item.transform[5];
+    const x = item.transform[4];
+    let matched = false;
+    for (const ln of lineMap) {
+      if (Math.abs(ln.y - y) <= 8) {
+        ln.items.push({ x, text });
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) lineMap.push({ y, items: [{ x, text }] });
+  }
+
+  // Sort lines top-to-bottom (higher Y = higher on page in PDF coords)
+  lineMap.sort((a, b) => b.y - a.y);
+
+  const records = [];
+  let currentSection = null;
+  let colHeaders = null; // [{name, x}]
+
+  const EID_RE = /^[A-Z]{4}\d{4}$/;
+  const DATE_RE = /^\d{2}-\d{2}-\d{4}$/;
+
+  for (let li = 0; li < lineMap.length; li++) {
+    const ln = lineMap[li];
+    ln.items.sort((a, b) => a.x - b.x);
+    const lineText = ln.items.map(i => i.text).join(' ');
+
+    // ── Section detection ──────────────────────────────────────
+    if (/PCSM Monthly Call.*Score by survey/i.test(lineText)) {
+      currentSection = 'Monthly Call';
+      colHeaders = null;
+      continue;
+    }
+    if (/MC Setup.*Score by survey/i.test(lineText)) {
+      currentSection = 'MC Setup';
+      colHeaders = null;
+      continue;
+    }
+    if (/BC Kick.?[Oo]ff.*Score by survey/i.test(lineText)) {
+      currentSection = 'BC Kick off';
+      colHeaders = null;
+      continue;
+    }
+    if (/Inbound Phone.*Score by survey/i.test(lineText)) {
+      currentSection = 'Inbound Phone';
+      colHeaders = null;
+      continue;
+    }
+    if (!currentSection) continue;
+
+    // ── Header row detection ───────────────────────────────────
+    if (/Start Date/i.test(lineText) && /EID/i.test(lineText)) {
+      colHeaders = ln.items.map(item => ({
+        name: item.text.trim(),
+        x: item.x
+      }));
+      continue;
+    }
+    if (!colHeaders) continue;
+
+    // ── Data row detection: must contain EID ──────────────────
+    const eidItem = ln.items.find(i => EID_RE.test(i.text.trim()));
+    if (!eidItem) continue;
+    const eid = eidItem.text.trim();
+    // Dedup by EAID + Start Date so the same account can appear in multiple months
+    const dateStrRaw = ln.items.find(i => DATE_RE.test(i.text.trim()));
+    const dedupKey = eid + '|' + (dateStrRaw ? dateStrRaw.text.trim() : '');
+    if (seenKeys.has(dedupKey)) continue;
+
+    // Assign each item to its nearest column header
+    const colValues = {};
+    colHeaders.forEach(h => { colValues[h.name] = []; });
+
+    for (const item of ln.items) {
+      let closest = colHeaders[0];
+      let minDist = Math.abs(item.x - colHeaders[0].x);
+      for (const h of colHeaders) {
+        const d = Math.abs(item.x - h.x);
+        if (d < minDist) { minDist = d; closest = h; }
+      }
+      colValues[closest.name].push(item.text.trim());
+    }
+
+    // Join multi-word values within each column
+    const cv = {};
+    for (const [k, v] of Object.entries(colValues)) {
+      cv[k] = v.join(' ').trim();
+    }
+
+    // ── Extract fields ─────────────────────────────────────────
+    // PDF headers are split into individual words, so "TSS Email" may be indexed
+    // as 'TSS' or 'Email' independently. Check all variants + scan for @ as fallback.
+    const startDate    = cv['Start Date']    || cv['StartDate']    || cv['Start']    || '';
+    const recordedDate = cv['Recorded Date'] || cv['RecordedDate'] || cv['Recorded'] || startDate;
+    const managerName  = cv['Manager Name']  || cv['ManagerName']  || cv['Manager']  || '';
+    const ownerName    = cv['Owner Name']    || cv['OwnerName']    || cv['Owner']    || '';
+    // For TSS Email: check full key, split keys, then scan all values for '@'
+    let tssEmail = cv['TSS Email'] || cv['TSSEmail'] || cv['TSS'] || cv['Email'] ||
+                   Object.values(cv).find(v => v && v.includes('@')) || '';
+
+    // Belt-and-suspenders: if still no email, scan ±4 adjacent lines in lineMap.
+    // Long email addresses (e.g. keila.morenomercado@thryv.com) can wrap inside the
+    // PDF table cell and land at a Y position >8px from the rest of the row, putting
+    // them in a separate line group entirely.
+    if (!tssEmail) {
+      const tssColX = (colHeaders.find(h => /TSS|Email/i.test(h.name)) || {}).x;
+      for (let ni = Math.max(0, li - 4); ni <= Math.min(lineMap.length - 1, li + 4); ni++) {
+        if (ni === li) continue;
+        const nearLn = lineMap[ni];
+        // Don't steal from another data row
+        if (nearLn.items.some(i => EID_RE.test(i.text.trim()))) continue;
+        for (const item of nearLn.items) {
+          const t = item.text.trim();
+          if (t.includes('@') && (!tssColX || Math.abs(item.x - tssColX) < 150)) {
+            tssEmail = t;
+            break;
+          }
+        }
+        if (tssEmail) break;
+      }
+    }
+
+    const lthVal   = cv['LtH'] || cv['LTH'] || '';
+
+    // Parse LtH score
+    const lthNum = parseLtH(lthVal);
+    if (lthNum === null) continue; // skip N/A LtH
+
+    // Parse dates
+    const startDt    = parseDate(startDate);
+    const recordedDt = parseDate(recordedDate);
+    if (!startDt) continue;
+
+    // Supervisor (manager) — fix camelCase
+    let supervisor = fixCamelCase(managerName);
+    if (supervisor && supervisor.includes('@')) supervisor = emailToName(supervisor);
+
+    // Case owner — for MC Setup / BC Kick off / Inbound Phone the owner comes from
+    // the TSS Email column; convert email → "First Last" if needed.
+    // If the name field is blank but an email was found anywhere in the row, use it.
+    let caseOwner;
+    if (currentSection === 'Monthly Call') {
+      const raw = ownerName || tssEmail;
+      caseOwner = raw.includes('@') ? emailToName(raw) : raw;
+    } else {
+      const raw = tssEmail || ownerName;
+      caseOwner = raw.includes('@') ? emailToName(raw) : raw;
+    }
+
+    seenKeys.add(dedupKey);
+    records.push({
+      date:           startDt,
+      eaid:           eid,
+      surveyType:     currentSection,
+      caseOwner:      caseOwner,
+      supervisor:     supervisor,
+      monthImpacting: recordedDt,
+      score:          lthNum
+    });
+  }
+
+  return records;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function parseDate(str) {
+  if (!str) return null;
+  str = str.trim();
+  // MM-DD-YYYY
+  let m = str.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (m) return new Date(+m[3], +m[1]-1, +m[2]);
+  // MM/DD/YYYY
+  m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(+m[3], +m[1]-1, +m[2]);
+  return null;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dy = String(d.getDate()).padStart(2,'0');
+  return m + '/' + dy + '/' + d.getFullYear();
+}
+
+function parseLtH(val) {
+  if (!val) return null;
+  const s = String(val).trim().toUpperCase();
+  if (s === 'N/A' || s === 'NA' || s === '') return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : Math.round(n);
+}
+
+function fixCamelCase(name) {
+  if (!name) return name;
+  // Insert space before uppercase that follows lowercase
+  let fixed = name.replace(/([a-z])([A-Z])/g, '$1 $2');
+  // Fix "Name- Word" → "Name-Word"
+  fixed = fixed.replace(/-\s+/g, '-');
+  return fixed.replace(/\s+/g, ' ').trim();
+}
+
+function emailToName(email) {
+  if (!email || !email.includes('@')) return email;
+  const local = email.split('@')[0];
+  return local.split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+}
+
+function tagClass(type) {
+  if (type === 'Monthly Call') return 'tag-mc';
+  if (type === 'MC Setup')     return 'tag-setup';
+  if (type === 'BC Kick off')  return 'tag-bc';
+  return 'tag-other';
+}
+
+// ── Excel Processing ──────────────────────────────────────────────────────────
+function processExcel(arrayBuffer, newRecords) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  const ws = wb.Sheets['PCSM Surveys'];
+  if (!ws) throw new Error('Sheet "PCSM Surveys" not found in workbook');
+
+  // Read existing records — key = "EAID|YYYY-MM-DD" to allow same account across months
+  const existing = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+  const existingKeys = new Set();
+  let lastDataRow = 1; // 1-indexed
+  for (let i = 1; i < existing.length; i++) {
+    const row = existing[i];
+    const eaid = row && row[1] ? String(row[1]).trim() : '';
+    if (eaid && eaid.toLowerCase() !== 'eaid') {
+      // Convert Excel serial date (col A) to YYYY-MM-DD string for the key
+      const dateSerial = row[0];
+      let dateStr = '';
+      if (typeof dateSerial === 'number') {
+        const d = new Date(Math.round((dateSerial - 25569) * 86400 * 1000));
+        dateStr = d.getUTCFullYear() + '-' +
+                  String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                  String(d.getUTCDate()).padStart(2, '0');
+      } else if (dateSerial instanceof Date) {
+        dateStr = dateSerial.getUTCFullYear() + '-' +
+                  String(dateSerial.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                  String(dateSerial.getUTCDate()).padStart(2, '0');
+      } else if (dateSerial) {
+        dateStr = String(dateSerial).trim();
+      }
+      existingKeys.add(eaid + '|' + dateStr);
+      lastDataRow = i + 1; // +1 because sheet rows are 1-indexed
+    }
+  }
+
+  // Build key for each incoming PDF record using the same format
+  const recKey = r => {
+    const d = r.date;
+    if (!d) return r.eaid + '|';
+    const ds = d.getFullYear() + '-' +
+               String(d.getMonth() + 1).padStart(2, '0') + '-' +
+               String(d.getDate()).padStart(2, '0');
+    return r.eaid + '|' + ds;
+  };
+
+  // Filter to genuinely new records
+  const toAdd = newRecords
+    .filter(r => !existingKeys.has(recKey(r)))
+    .sort((a, b) => (a.date || 0) - (b.date || 0));
+
+  log('Existing rows: ' + existingKeys.size + ' | New to add: ' + toAdd.length, 'log-head');
+
+  // ── Convert existing Month Impacting cells (col F = index 5) to "Month YYYY" ──
+  // Existing rows may have date serial numbers or MM/DD/YYYY strings.
+  // Rewrite them all as plain text so the format is consistent throughout.
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  function serialToMonthYear(val) {
+    if (!val && val !== 0) return null;
+    let d;
+    if (val instanceof Date) {
+      d = val;
+    } else if (typeof val === 'number') {
+      d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    } else {
+      const s = String(val).trim();
+      // Already "Month YYYY"?
+      if (/^[A-Za-z]+ \d{4}$/.test(s)) return s;
+      // Try MM/DD/YYYY or M/D/YYYY
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) d = new Date(+m[3], +m[1]-1, +m[2]);
+      else {
+        // Try YYYY-MM-DD
+        m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) d = new Date(+m[1], +m[2]-1, +m[3]);
+        else return null;
+      }
+    }
+    if (!d || isNaN(d.getTime())) return null;
+    return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+  }
+
+  for (let i = 1; i <= lastDataRow - 1; i++) { // i is 0-indexed row in sheet (row 0 = header)
+    const addr = XLSX.utils.encode_cell({ r: i, c: 5 }); // col F
+    const cell = ws[addr];
+    if (!cell || cell.v === null || cell.v === undefined || cell.v === '') continue;
+    const converted = serialToMonthYear(cell.v);
+    if (converted) ws[addr] = { t: 's', v: converted };
+  }
+
+  // Append new rows to sheet
+  let writeRow = lastDataRow + 1;
+  for (const rec of toAdd) {
+    const cellDate = (col, d) => {
+      if (!d) return;
+      const addr = XLSX.utils.encode_cell({ r: writeRow - 1, c: col });
+      ws[addr] = { t: 'd', v: d, z: 'MM/DD/YYYY' };
+    };
+    const cellStr = (col, val) => {
+      if (val === null || val === undefined) return;
+      const addr = XLSX.utils.encode_cell({ r: writeRow - 1, c: col });
+      ws[addr] = { t: typeof val === 'number' ? 'n' : 's', v: val };
+    };
+
+    cellDate(0, rec.date);
+    cellStr(1, rec.eaid);
+    cellStr(2, rec.surveyType);
+    cellStr(3, rec.caseOwner);
+    cellStr(4, rec.supervisor);
+    // Month Impacting as "Month YYYY" text (e.g. "June 2026")
+    if (rec.monthImpacting) {
+      cellStr(5, MONTHS[rec.monthImpacting.getMonth()] + ' ' + rec.monthImpacting.getFullYear());
+    }
+    cellStr(6, rec.score);
+    // col 7 (Rebutal) and col 8 (Final Score) left blank
+
+    writeRow++;
+  }
+
+  // Update sheet range
+  if (toAdd.length > 0) {
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    range.e.r = Math.max(range.e.r, writeRow - 2);
+    ws['!ref'] = XLSX.utils.encode_range(range);
+  }
+
+  return { wb, toAdd };
+}
+
+// ── Main Import ───────────────────────────────────────────────────────────────
+async function runImport() {
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('log-box').innerHTML = '';
+  document.getElementById('preview-card').classList.remove('visible');
+  document.getElementById('dl-btn').classList.remove('visible');
+  document.getElementById('reset-link').classList.remove('visible');
+  toAddRows = [];
+  resultWb  = null;
+
+  try {
+    log('Reading PDF...', 'log-head');
+    const pdfRecords = await parsePDF(pdfBytes);
+    log('Total unique records extracted from PDF: ' + pdfRecords.length, 'log-ok');
+
+    log('', '');
+    log('Processing Excel workbook...', 'log-head');
+    const { wb, toAdd } = processExcel(xlBytes, pdfRecords);
+    resultWb  = wb;
+    toAddRows = toAdd;
+
+    const dupCount  = pdfRecords.length - toAdd.length;
+    const skipCount = 0; // N/A already filtered during PDF parse
+
+    // Preview
+    renderPreview(toAdd, dupCount);
+
+    if (toAdd.length > 0) {
+      log('Ready to download updated workbook with ' + toAdd.length + ' new row(s).', 'log-ok');
+      document.getElementById('dl-btn').classList.add('visible');
+    } else {
+      log('No new records — workbook is already up to date.', 'log-warn');
+    }
+    document.getElementById('reset-link').classList.add('visible');
+
+  } catch (err) {
+    log('ERROR: ' + err.message, 'log-err');
+    console.error(err);
+    document.getElementById('run-btn').disabled = false;
+  }
+}
+
+function renderPreview(toAdd, dupCount) {
+  const card  = document.getElementById('preview-card');
+  const stats = document.getElementById('preview-stats');
+  const tbody = document.getElementById('preview-body');
+
+  stats.innerHTML =
+    '<span class="stat-pill stat-new">' + toAdd.length + ' new rows</span>' +
+    (dupCount > 0 ? '<span class="stat-pill stat-dup">' + dupCount + ' already in spreadsheet (skipped)</span>' : '');
+
+  tbody.innerHTML = '';
+  for (const r of toAdd) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + fmtDate(r.date) + '</td>' +
+      '<td style="font-family:monospace">' + r.eaid + '</td>' +
+      '<td><span class="tag ' + tagClass(r.surveyType) + '">' + r.surveyType + '</span></td>' +
+      '<td>' + (r.caseOwner || '') + '</td>' +
+      '<td>' + (r.supervisor || '') + '</td>' +
+      '<td>' + fmtDate(r.monthImpacting) + '</td>' +
+      '<td style="font-weight:700">' + r.score + '</td>';
+    tbody.appendChild(tr);
+  }
+
+  card.classList.add('visible');
+}
+
+// ── Download ──────────────────────────────────────────────────────────────────
+function downloadResult() {
+  if (!resultWb) return;
+  const today = new Date();
+  const stamp = (today.getMonth()+1 + '').padStart(2,'0') +
+                (today.getDate()+'').padStart(2,'0') + today.getFullYear().toString().slice(2);
+  XLSX.writeFile(resultWb, 'PCSM Surveys ' + stamp + '.xlsx');
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+function resetAll() {
+  pdfBytes = xlBytes = resultWb = null;
+  toAddRows = [];
+  ['step-pdf','step-xl'].forEach(id => document.getElementById(id).classList.remove('done'));
+  document.getElementById('pdf-name').textContent = '';
+  document.getElementById('xl-name').textContent  = '';
+  document.getElementById('log-box').innerHTML = '';
+  document.getElementById('log-box').classList.remove('visible');
+  document.getElementById('preview-card').classList.remove('visible');
+  document.getElementById('dl-btn').classList.remove('visible');
+  document.getElementById('reset-link').classList.remove('visible');
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('pdf-input').value  = '';
+  document.getElementById('xl-input').value   = '';
+}
+</script>
+</body>
+</html>
