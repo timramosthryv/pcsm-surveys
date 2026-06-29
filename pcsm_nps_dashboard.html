@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PCSM NPS Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 <style>
   :root {
@@ -63,6 +64,10 @@
   .filter-btn { padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--border); background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--muted); transition: all 0.15s; }
   .filter-btn.active { background: var(--navy); border-color: var(--navy); color: #fff; }
   .filter-btn:hover:not(.active) { border-color: var(--navy); color: var(--navy); }
+  .view-toggle { display: inline-flex; border: 1.5px solid var(--border); border-radius: 20px; overflow: hidden; }
+  .view-toggle button { padding: 6px 16px; border: none; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--muted); transition: all 0.15s; }
+  .view-toggle button.active { background: var(--orange); color: #fff; }
+  .view-toggle button:hover:not(.active) { background: #f7f7f7; }
   select.yr-select { padding: 6px 12px; border-radius: 6px; border: 1.5px solid var(--border); font-size: 12px; font-weight: 600; color: var(--navy); background: #fff; cursor: pointer; }
 
   /* Table */
@@ -113,7 +118,12 @@
 
   <!-- Filters -->
   <div class="filters" style="margin-top:0; padding-top:8px;">
-    <span class="filter-label">Year:</span>
+    <span class="filter-label">View:</span>
+    <div class="view-toggle">
+      <button id="view-monthly" class="active" onclick="setViewMode('monthly')">Monthly</button>
+      <button id="view-quarterly" onclick="setViewMode('quarterly')">Quarterly</button>
+    </div>
+    <span class="filter-label" style="margin-left:10px;">Year:</span>
     <select class="yr-select" id="yr-filter"><option value="all">All Years</option></select>
     <span class="filter-label" style="margin-left:10px;">Survey Type:</span>
     <div id="type-filters"></div>
@@ -146,7 +156,7 @@
   <!-- Charts -->
   <div class="charts-row">
     <div class="card">
-      <div class="card-title">Monthly NPS Trend</div>
+      <div class="card-title" id="trend-title">Monthly NPS Trend</div>
       <canvas id="trend-chart" height="90"></canvas>
     </div>
     <div class="card">
@@ -157,7 +167,7 @@
 
   <!-- Table -->
   <div class="card">
-    <div class="card-title">Monthly Breakdown</div>
+    <div class="card-title" id="table-title">Monthly Breakdown</div>
     <div class="nps-formula">NPS = % Promoters (9–10) − % Detractors (0–6) · Scale: −100 to +100</div>
     <br>
     <div class="table-wrap">
@@ -183,11 +193,61 @@
 
 <script>
 // ── Globals ──────────────────────────────────────────────────────────────────
+// Register datalabels plugin globally
+Chart.register(ChartDataLabels);
+
 let allRows = [];
 let trendChart = null;
 let typeChart  = null;
 let activeTypes = new Set(['__all__']);
 const SURVEY_TYPES_ORDER = [];
+let viewMode = 'monthly'; // 'monthly' | 'quarterly'
+
+// ── View Mode ─────────────────────────────────────────────────────────────────
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById('view-monthly').classList.toggle('active', mode === 'monthly');
+  document.getElementById('view-quarterly').classList.toggle('active', mode === 'quarterly');
+  document.getElementById('trend-title').textContent  = mode === 'quarterly' ? 'Quarterly NPS Trend'  : 'Monthly NPS Trend';
+  document.getElementById('table-title').textContent  = mode === 'quarterly' ? 'Quarterly Breakdown'  : 'Monthly Breakdown';
+  document.querySelector('#monthly-table thead tr th').textContent = mode === 'quarterly' ? 'Quarter' : 'Month';
+  refresh();
+}
+
+// Convert "YYYY-MM" → "YYYY-Q1" etc.
+function monthToQuarter(month) {
+  const [y, mo] = month.split('-');
+  return y + '-Q' + Math.ceil(parseInt(mo) / 3);
+}
+
+// Format quarter key "YYYY-Q1" → "Q1 2026"
+function fmtQuarter(qKey) {
+  const parts = qKey.split('-Q');
+  return 'Q' + parts[1] + ' ' + parts[0];
+}
+
+// Group rows by quarter key
+function groupByQuarter(rows) {
+  const byQ = {};
+  rows.forEach(r => {
+    const qk = monthToQuarter(r.month);
+    if (!byQ[qk]) byQ[qk] = [];
+    byQ[qk].push(r.score);
+  });
+  return byQ;
+}
+
+// Group rows by quarter AND survey type
+function groupByQuarterType(rows) {
+  const data = {};
+  rows.forEach(r => {
+    const qk = monthToQuarter(r.month);
+    if (!data[qk]) data[qk] = {};
+    if (!data[qk][r.surveyType]) data[qk][r.surveyType] = [];
+    data[qk][r.surveyType].push(r.score);
+  });
+  return data;
+}
 
 // ── Upload Handling ───────────────────────────────────────────────────────────
 const dropZone  = document.getElementById('drop-zone');
@@ -400,7 +460,12 @@ function updateKPIs(rows) {
   kpiNps.style.borderLeftColor = npsColor(res.nps);
 
   document.getElementById('kpi-surveys-val').textContent = res.total.toLocaleString();
-  document.getElementById('kpi-surveys-sub').textContent = [...new Set(rows.map(r => r.month))].length + ' months of data';
+  if (viewMode === 'quarterly') {
+    const qCount = new Set(rows.map(r => monthToQuarter(r.month))).size;
+    document.getElementById('kpi-surveys-sub').textContent = qCount + ' quarter' + (qCount !== 1 ? 's' : '') + ' of data';
+  } else {
+    document.getElementById('kpi-surveys-sub').textContent = [...new Set(rows.map(r => r.month))].length + ' months of data';
+  }
 
   const pPct = Math.round((res.promoters / res.total) * 100);
   const dPct = Math.round((res.detractors / res.total) * 100);
@@ -412,17 +477,32 @@ function updateKPIs(rows) {
 
 // ── Trend Chart ───────────────────────────────────────────────────────────────
 function updateTrendChart(rows) {
-  const byMonth = {};
-  rows.forEach(r => {
-    if (!byMonth[r.month]) byMonth[r.month] = [];
-    byMonth[r.month].push(r.score);
-  });
-  const months = Object.keys(byMonth).sort();
-  const npsData = months.map(m => { const res = calcNPS(byMonth[m]); return res ? res.nps : null; });
-  const labels  = months.map(m => {
-    const [y, mo] = m.split('-');
-    return new Date(parseInt(y), parseInt(mo)-1, 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
-  });
+  let periods, npsData, labels, tooltipData;
+
+  if (viewMode === 'quarterly') {
+    const byQ = groupByQuarter(rows);
+    periods = Object.keys(byQ).sort();
+    npsData = periods.map(q => { const res = calcNPS(byQ[q]); return res ? res.nps : null; });
+    labels  = periods.map(q => fmtQuarter(q));
+    tooltipData = periods.map(q => calcNPS(byQ[q]));
+  } else {
+    const byMonth = {};
+    rows.forEach(r => {
+      if (!byMonth[r.month]) byMonth[r.month] = [];
+      byMonth[r.month].push(r.score);
+    });
+    periods = Object.keys(byMonth).sort();
+    npsData = periods.map(m => { const res = calcNPS(byMonth[m]); return res ? res.nps : null; });
+    labels  = periods.map(m => {
+      const [y, mo] = m.split('-');
+      return new Date(parseInt(y), parseInt(mo)-1, 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+    });
+    tooltipData = periods.map(m => { const bm = {}; rows.forEach(r => { if (!bm[r.month]) bm[r.month]=[]; bm[r.month].push(r.score); }); return calcNPS(bm[m]); });
+  }
+
+  // (legacy variable name kept for tooltip closure)
+  const months = periods;
+  const byMonth = (() => { const bm = {}; rows.forEach(r => { if (!bm[r.month]) bm[r.month]=[]; bm[r.month].push(r.score); }); return bm; })();
 
   if (trendChart) trendChart.destroy();
   const ctx = document.getElementById('trend-chart').getContext('2d');
@@ -449,12 +529,20 @@ function updateTrendChart(rows) {
       responsive: true,
       plugins: {
         legend: { display: false },
+        datalabels: {
+          display: true,
+          align: 'top',
+          anchor: 'top',
+          formatter: v => v === null ? '' : (v > 0 ? '+' : '') + v,
+          color: ctx => npsColor(ctx.dataset.data[ctx.dataIndex]),
+          font: { size: 11, weight: '700' },
+          padding: { bottom: 2 }
+        },
         tooltip: {
           callbacks: {
             label: ctx => ' NPS: ' + (ctx.parsed.y > 0 ? '+' : '') + ctx.parsed.y,
             afterLabel: ctx => {
-              const m = months[ctx.dataIndex];
-              const res = calcNPS(byMonth[m]);
+              const res = tooltipData[ctx.dataIndex];
               return res ? ['Promoters: ' + res.promoters + ' (' + Math.round(res.promoters/res.total*100) + '%)',
                             'Passives:  ' + res.passives,
                             'Detractors: ' + res.detractors + ' (' + Math.round(res.detractors/res.total*100) + '%)',
@@ -506,6 +594,15 @@ function updateTypeChart(rows) {
       responsive: true,
       plugins: {
         legend: { display: false },
+        datalabels: {
+          display: true,
+          anchor: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start',
+          align:  ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'right' : 'left',
+          formatter: v => v === null ? '' : (v > 0 ? '+' : '') + v,
+          color: '#1A202C',
+          font: { size: 11, weight: '700' },
+          padding: { left: 4, right: 4 }
+        },
         tooltip: {
           callbacks: {
             label: ctx => ' NPS: ' + (ctx.parsed.x > 0 ? '+' : '') + ctx.parsed.x
@@ -513,93 +610,91 @@ function updateTypeChart(rows) {
         }
       },
       scales: {
-        x: { min: -100, max: 100, grid: { color: '#EDF2F7' }, ticks: { callback: v => (v>0?'+':'') + v, font: { size: 11 } } },
+        x: { min: -100, max: 110, grid: { color: '#EDF2F7' }, ticks: { callback: v => v <= 100 ? (v>0?'+':'') + v : '', font: { size: 11 } } },
         y: { grid: { display: false }, ticks: { font: { size: 11 } } }
       }
     }
   });
 }
 
-// ── Table ──────────────────────────────────────────────────────────────────────
+
+// ── Table ────────────────────────────────────────────────────────────────────
 function fmtMonth(m) {
   const [y, mo] = m.split('-');
   return new Date(parseInt(y), parseInt(mo)-1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 }
 
+function npsBar(pPct, dPct) {
+  return '<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;width:100px;">' +
+    '<div style="width:' + pPct + '%;background:#38A169;"></div>' +
+    '<div style="width:' + (100-pPct-dPct) + '%;background:#D69E2E;"></div>' +
+    '<div style="width:' + dPct + '%;background:#E53E3E;"></div>' +
+    '</div>';
+}
+
+function tableRow(label, res, isSummary) {
+  if (!res) return '';
+  const npsColor_v = res.nps >= 50 ? '#38A169' : res.nps >= 0 ? '#D69E2E' : '#E53E3E';
+  const pPct = Math.round((res.promoters / res.total) * 100);
+  const dPct = Math.round((res.detractors / res.total) * 100);
+  const bg   = isSummary ? 'background:#EDF2F7;font-weight:600;' : '';
+  return '<tr style="' + bg + '">' +
+    '<td>' + label + '</td>' +
+    '<td>' + (isSummary ? '<em>ALL TYPES</em>' : '') + '</td>' +
+    '<td style="color:' + npsColor_v + ';font-weight:700;">' + (res.nps > 0 ? '+' : '') + res.nps + '</td>' +
+    '<td>' + pPct + '%</td>' +
+    '<td>' + Math.round(((res.total - res.promoters - res.detractors) / res.total) * 100) + '%</td>' +
+    '<td>' + dPct + '%</td>' +
+    '<td>' + res.total + '</td>' +
+    '<td>' + npsBar(pPct, dPct) + '</td>' +
+    '</tr>';
+}
+
 function updateTable(rows) {
-  // Build month x type breakdown
-  const data = {};  // data[month][type] = [scores]
-  rows.forEach(r => {
-    if (!data[r.month]) data[r.month] = {};
-    if (!data[r.month][r.surveyType]) data[r.month][r.surveyType] = [];
-    data[r.month][r.surveyType].push(r.score);
-  });
-
-  // Also compute overall per month
-  const monthly = {};
-  rows.forEach(r => {
-    if (!monthly[r.month]) monthly[r.month] = [];
-    monthly[r.month].push(r.score);
-  });
-
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
 
-  const months = Object.keys(data).sort().reverse();
+  if (viewMode === 'quarterly') {
+    // ── Quarterly view ──
+    const byQT  = groupByQuarterType(rows);   // [qKey][type] = [scores]
+    const byQ   = groupByQuarter(rows);        // [qKey] = [scores]
+    const quarters = Object.keys(byQ).sort().reverse();
 
-  months.forEach(m => {
-    const types = Object.keys(data[m]).sort();
-
-    // Overall row
-    const mRes = calcNPS(monthly[m]);
-    if (mRes) {
-      const tr = document.createElement('tr');
-      tr.style.background = '#EDF2F7';
-      tr.style.fontWeight = '600';
-      const pBar = Math.round((mRes.promoters / mRes.total) * 100);
-      const dBar = Math.round((mRes.detractors / mRes.total) * 100);
-      const paBar = 100 - pBar - dBar;
-      tr.innerHTML =
-        '<td style="font-weight:700">' + fmtMonth(m) + '</td>' +
-        '<td style="color:#718096;font-size:12px">ALL TYPES</td>' +
-        '<td><span class="nps-badge ' + npsBadgeClass(mRes.nps) + '">' + (mRes.nps>0?'+':'') + mRes.nps + '</span></td>' +
-        '<td style="color:#38A169">' + mRes.promoters + ' <span style="color:#999;font-weight:400">(' + pBar + '%)</span></td>' +
-        '<td style="color:#718096">' + mRes.passives + '</td>' +
-        '<td style="color:#E53E3E">' + mRes.detractors + ' <span style="color:#999;font-weight:400">(' + dBar + '%)</span></td>' +
-        '<td>' + mRes.total + '</td>' +
-        '<td><div class="bar-wrap">' +
-          '<div class="bar-p"  style="width:' + pBar  + '%"></div>' +
-          '<div class="bar-pa" style="width:' + paBar + '%"></div>' +
-          '<div class="bar-d"  style="width:' + dBar  + '%"></div>' +
-        '</div></td>';
-      tbody.appendChild(tr);
-    }
-
-    // Per-type rows
-    types.forEach(t => {
-      const res = calcNPS(data[m][t]);
-      if (!res) return;
-      const pBar = Math.round((res.promoters / res.total) * 100);
-      const dBar = Math.round((res.detractors / res.total) * 100);
-      const paBar = 100 - pBar - dBar;
-      const tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td style="padding-left:20px;color:#718096;font-size:12px"></td>' +
-        '<td style="font-size:12px">' + t + '</td>' +
-        '<td><span class="nps-badge ' + npsBadgeClass(res.nps) + '">' + (res.nps>0?'+':'') + res.nps + '</span></td>' +
-        '<td style="color:#38A169">' + res.promoters + ' <span style="color:#999">(' + pBar + '%)</span></td>' +
-        '<td style="color:#718096">' + res.passives + '</td>' +
-        '<td style="color:#E53E3E">' + res.detractors + ' <span style="color:#999">(' + dBar + '%)</span></td>' +
-        '<td>' + res.total + '</td>' +
-        '<td><div class="bar-wrap">' +
-          '<div class="bar-p"  style="width:' + pBar  + '%"></div>' +
-          '<div class="bar-pa" style="width:' + paBar + '%"></div>' +
-          '<div class="bar-d"  style="width:' + dBar  + '%"></div>' +
-        '</div></td>';
-      tbody.appendChild(tr);
+    quarters.forEach(qk => {
+      const label = fmtQuarter(qk);
+      // Summary row
+      tbody.innerHTML += tableRow(label, calcNPS(byQ[qk]), true);
+      // Per-type rows
+      const types = Object.keys(byQT[qk] || {}).sort();
+      types.forEach(t => {
+        tbody.innerHTML += tableRow('', calcNPS(byQT[qk][t]), false).replace('<td></td>', '<td style="padding-left:24px;color:#555;">' + t + '</td>');
+      });
     });
-  });
+
+  } else {
+    // ── Monthly view ──
+    const data    = {};
+    const monthly = {};
+    rows.forEach(r => {
+      if (!data[r.month])               data[r.month] = {};
+      if (!data[r.month][r.surveyType]) data[r.month][r.surveyType] = [];
+      data[r.month][r.surveyType].push(r.score);
+      if (!monthly[r.month]) monthly[r.month] = [];
+      monthly[r.month].push(r.score);
+    });
+
+    const months = Object.keys(data).sort().reverse();
+    months.forEach(m => {
+      const label = fmtMonth(m);
+      tbody.innerHTML += tableRow(label, calcNPS(monthly[m]), true);
+      const types = Object.keys(data[m]).sort();
+      types.forEach(t => {
+        tbody.innerHTML += tableRow('', calcNPS(data[m][t]), false).replace('<td></td>', '<td style="padding-left:24px;color:#555;">' + t + '</td>');
+      });
+    });
+  }
 }
+
 </script>
 </body>
 </html>
