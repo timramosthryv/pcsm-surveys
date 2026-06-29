@@ -125,6 +125,14 @@
     </div>
     <span class="filter-label" style="margin-left:10px;">Year:</span>
     <select class="yr-select" id="yr-filter"><option value="all">All Years</option></select>
+    <span class="filter-label" id="qtr-label" style="margin-left:10px;display:none;">Quarter:</span>
+    <select class="yr-select" id="qtr-filter" style="display:none;">
+      <option value="all">All Quarters</option>
+      <option value="Q1">Q1 (Jan–Mar)</option>
+      <option value="Q2">Q2 (Apr–Jun)</option>
+      <option value="Q3">Q3 (Jul–Sep)</option>
+      <option value="Q4">Q4 (Oct–Dec)</option>
+    </select>
     <span class="filter-label" style="margin-left:10px;">Survey Type:</span>
     <div id="type-filters"></div>
   </div>
@@ -211,6 +219,15 @@ function setViewMode(mode) {
   document.getElementById('trend-title').textContent  = mode === 'quarterly' ? 'Quarterly NPS Trend'  : 'Monthly NPS Trend';
   document.getElementById('table-title').textContent  = mode === 'quarterly' ? 'Quarterly Breakdown'  : 'Monthly Breakdown';
   document.querySelector('#monthly-table thead tr th').textContent = mode === 'quarterly' ? 'Quarter' : 'Month';
+
+  // Show/hide quarter filter
+  const qtrFilter = document.getElementById('qtr-filter');
+  const qtrLabel  = document.getElementById('qtr-label');
+  const showQtr   = mode === 'quarterly';
+  qtrFilter.style.display = showQtr ? '' : 'none';
+  qtrLabel.style.display  = showQtr ? '' : 'none';
+  if (!showQtr) qtrFilter.value = 'all'; // reset when leaving quarterly mode
+
   refresh();
 }
 
@@ -381,10 +398,16 @@ function npsBadgeClass(v) {
 
 // ── Filtered Data ─────────────────────────────────────────────────────────────
 function getFilteredRows() {
-  const yr = document.getElementById('yr-filter').value;
+  const yr  = document.getElementById('yr-filter').value;
+  const qtr = document.getElementById('qtr-filter').value;
   return allRows.filter(r => {
     if (yr !== 'all' && r.yr !== yr) return false;
     if (!activeTypes.has('__all__') && !activeTypes.has(r.surveyType)) return false;
+    // Quarter filter only applies in quarterly view mode
+    if (viewMode === 'quarterly' && qtr !== 'all') {
+      const q = 'Q' + Math.ceil(parseInt(r.month.split('-')[1]) / 3);
+      if (q !== qtr) return false;
+    }
     return true;
   });
 }
@@ -397,6 +420,7 @@ function buildDashboard() {
   yrSel.innerHTML = '<option value="all">All Years</option>';
   years.forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = y; yrSel.appendChild(o); });
   yrSel.addEventListener('change', refresh);
+  document.getElementById('qtr-filter').addEventListener('change', refresh);
 
   // Populate type filters
   const tf = document.getElementById('type-filters');
@@ -654,42 +678,50 @@ function updateTable(rows) {
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
 
+  const MONTH_NAMES = ['January','February','March','April','May','June',
+                       'July','August','September','October','November','December'];
+
+  function fmtMonthLabel(m) {
+    // m = "YYYY-MM"
+    const parts = m.split('-');
+    return MONTH_NAMES[parseInt(parts[1], 10) - 1] + ' ' + parts[0];
+  }
+
   if (viewMode === 'quarterly') {
-    // ── Quarterly view ──
-    const byQT  = groupByQuarterType(rows);   // [qKey][type] = [scores]
-    const byQ   = groupByQuarter(rows);        // [qKey] = [scores]
+    const byQT     = groupByQuarterType(rows);
+    const byQ      = groupByQuarter(rows);
     const quarters = Object.keys(byQ).sort().reverse();
 
     quarters.forEach(qk => {
       const label = fmtQuarter(qk);
-      // Summary row
       tbody.innerHTML += tableRow(label, calcNPS(byQ[qk]), true);
-      // Per-type rows
       const types = Object.keys(byQT[qk] || {}).sort();
       types.forEach(t => {
-        tbody.innerHTML += tableRow('', calcNPS(byQT[qk][t]), false).replace('<td></td>', '<td style="padding-left:24px;color:#555;">' + t + '</td>');
+        tbody.innerHTML += tableRow('', calcNPS(byQT[qk][t]), false)
+          .replace('<td></td>', '<td style="padding-left:24px;color:#555;">' + t + '</td>');
       });
     });
 
   } else {
-    // ── Monthly view ──
-    const data    = {};
-    const monthly = {};
+    // Monthly view
+    const byMT = {};
+    const byM  = {};
     rows.forEach(r => {
-      if (!data[r.month])               data[r.month] = {};
-      if (!data[r.month][r.surveyType]) data[r.month][r.surveyType] = [];
-      data[r.month][r.surveyType].push(r.score);
-      if (!monthly[r.month]) monthly[r.month] = [];
-      monthly[r.month].push(r.score);
+      if (!byM[r.month])  byM[r.month]  = [];
+      if (!byMT[r.month]) byMT[r.month] = {};
+      if (!byMT[r.month][r.surveyType]) byMT[r.month][r.surveyType] = [];
+      byM[r.month].push(r.score);
+      byMT[r.month][r.surveyType].push(r.score);
     });
+    const months = Object.keys(byM).sort().reverse();
 
-    const months = Object.keys(data).sort().reverse();
     months.forEach(m => {
-      const label = fmtMonth(m);
-      tbody.innerHTML += tableRow(label, calcNPS(monthly[m]), true);
-      const types = Object.keys(data[m]).sort();
+      const label = fmtMonthLabel(m);
+      tbody.innerHTML += tableRow(label, calcNPS(byM[m]), true);
+      const types = Object.keys(byMT[m]).sort();
       types.forEach(t => {
-        tbody.innerHTML += tableRow('', calcNPS(data[m][t]), false).replace('<td></td>', '<td style="padding-left:24px;color:#555;">' + t + '</td>');
+        tbody.innerHTML += tableRow('', calcNPS(byMT[m][t]), false)
+          .replace('<td></td>', '<td style="padding-left:24px;color:#555;">' + t + '</td>');
       });
     });
   }
