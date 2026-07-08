@@ -523,10 +523,27 @@ function parseRows(raw) {
     const score = (finalScore !== null) ? finalScore : rawScore;
     if (score === null) continue;
 
-    allRows.push({ month, yr, surveyType, score, owner: r[3], supervisor: r[4] });
+    allRows.push({ month, yr, surveyType, score, owner: normalizeName(r[3]), supervisor: normalizeName(r[4]) });
 
     if (!SURVEY_TYPES_ORDER.includes(surveyType)) SURVEY_TYPES_ORDER.push(surveyType);
   }
+}
+
+// ── Name Normalization ────────────────────────────────────────────────────────
+// Maps known misspellings to the canonical correct name.
+// Pattern-based so it catches any variation automatically.
+const NAME_CORRECTIONS = [
+  { correct: 'Carla Miner-Lugunbyhl', pattern: /^carla\s+miner/i },
+  { correct: 'Julian Komimbin',       pattern: /^julian\s+kom/i  },
+];
+
+function normalizeName(name) {
+  if (!name) return name;
+  const s = String(name).trim();
+  for (const c of NAME_CORRECTIONS) {
+    if (c.pattern.test(s)) return c.correct;
+  }
+  return s;
 }
 
 // ── NPS Calculation ───────────────────────────────────────────────────────────
