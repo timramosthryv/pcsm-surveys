@@ -616,130 +616,73 @@ function buildDashboard() {
   refresh();
 }
 
-// ── Overview Type Filters ─────────────────────────────────────────────────────
-function buildOverviewTypeFilters() {
-  const tf = document.getElementById('type-filters');
+// ── Type Filter Builder (shared pattern) ─────────────────────────────────────
+function buildTypeFilters(containerId, getActive, setActive, onRefresh) {
+  const tf = document.getElementById(containerId);
   tf.innerHTML = '';
-  // activeTypes already reset in buildDashboard
+  setActive(new Set(['__all__']));
 
-  const allBtn = document.createElement('button');
-  allBtn.className = 'filter-btn active';
-  allBtn.textContent = 'All';
-  allBtn.dataset.type = '__all__';
-  allBtn.addEventListener('click', () => {
-    activeTypes = new Set(['__all__']);
-    tf.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    allBtn.classList.add('active');
-    refresh();
-  });
-  tf.appendChild(allBtn);
-
-  SURVEY_TYPES_ORDER.forEach(t => {
+  ['__all__', ...SURVEY_TYPES_ORDER].forEach(t => {
     const btn = document.createElement('button');
-    btn.className = 'filter-btn';
-    btn.textContent = t;
-    btn.dataset.type = t;
-    btn.addEventListener('click', () => {
-      if (activeTypes.has('__all__')) {
-        activeTypes = new Set([t]);
-        allBtn.classList.remove('active');
-      } else if (activeTypes.has(t)) {
-        activeTypes.delete(t);
-        if (activeTypes.size === 0) { activeTypes.add('__all__'); allBtn.classList.add('active'); }
-      } else {
-        activeTypes.add(t);
-      }
-      tf.querySelectorAll('.filter-btn[data-type!="__all__"]').forEach(b => {
-        b.classList.toggle('active', activeTypes.has(b.dataset.type));
-      });
-      refresh();
-    });
+    btn.type = 'button';
+    btn.className = 'filter-btn' + (t === '__all__' ? ' active' : '');
+    btn.textContent = t === '__all__' ? 'All' : t;
+    btn.dataset.ftype = t;
     tf.appendChild(btn);
   });
+
+  // Clone container to wipe any stale listeners, then add one delegated listener
+  const fresh = tf.cloneNode(true);
+  tf.parentNode.replaceChild(fresh, tf);
+  fresh.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-ftype]');
+    if (!btn) return;
+    const t = btn.dataset.ftype;
+    let cur = getActive();
+    if (t === '__all__') {
+      cur = new Set(['__all__']);
+    } else if (cur.has('__all__')) {
+      cur = new Set([t]);
+    } else if (cur.has(t)) {
+      cur.delete(t);
+      if (cur.size === 0) cur = new Set(['__all__']);
+    } else {
+      cur.add(t);
+    }
+    setActive(cur);
+    fresh.querySelectorAll('[data-ftype]').forEach(b => {
+      const bt = b.dataset.ftype;
+      b.classList.toggle('active', bt === '__all__' ? cur.has('__all__') : cur.has(bt));
+    });
+    onRefresh();
+  });
+}
+
+// ── Overview Type Filters ─────────────────────────────────────────────────────
+function buildOverviewTypeFilters() {
+  buildTypeFilters('type-filters',
+    () => activeTypes,
+    v  => { activeTypes = v; },
+    refresh
+  );
 }
 
 // ── Employee Type Filters ─────────────────────────────────────────────────────
 function buildEmpTypeFilters() {
-  const tf = document.getElementById('emp-type-filters');
-  tf.innerHTML = '';
-  empActiveTypes = new Set(['__all__']);
-
-  const allBtn = document.createElement('button');
-  allBtn.className = 'filter-btn active';
-  allBtn.textContent = 'All';
-  allBtn.dataset.type = '__all__';
-  allBtn.addEventListener('click', () => {
-    empActiveTypes = new Set(['__all__']);
-    tf.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    allBtn.classList.add('active');
-    refreshEmployeeTab();
-  });
-  tf.appendChild(allBtn);
-
-  SURVEY_TYPES_ORDER.forEach(t => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn';
-    btn.textContent = t;
-    btn.dataset.type = t;
-    btn.addEventListener('click', () => {
-      if (empActiveTypes.has('__all__')) {
-        empActiveTypes = new Set([t]);
-        allBtn.classList.remove('active');
-      } else if (empActiveTypes.has(t)) {
-        empActiveTypes.delete(t);
-        if (empActiveTypes.size === 0) { empActiveTypes.add('__all__'); allBtn.classList.add('active'); }
-      } else {
-        empActiveTypes.add(t);
-      }
-      tf.querySelectorAll('.filter-btn[data-type!="__all__"]').forEach(b => {
-        b.classList.toggle('active', empActiveTypes.has(b.dataset.type));
-      });
-      refreshEmployeeTab();
-    });
-    tf.appendChild(btn);
-  });
+  buildTypeFilters('emp-type-filters',
+    () => empActiveTypes,
+    v  => { empActiveTypes = v; },
+    refreshEmployeeTab
+  );
 }
 
 // ── Coach Type Filters ────────────────────────────────────────────────────────
 function buildCoachTypeFilters() {
-  const tf = document.getElementById('coach-type-filters');
-  tf.innerHTML = '';
-  coachActiveTypes = new Set(['__all__']);
-
-  const allBtn = document.createElement('button');
-  allBtn.className = 'filter-btn active';
-  allBtn.textContent = 'All';
-  allBtn.dataset.type = '__all__';
-  allBtn.addEventListener('click', () => {
-    coachActiveTypes = new Set(['__all__']);
-    tf.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    allBtn.classList.add('active');
-    refreshCoachTab();
-  });
-  tf.appendChild(allBtn);
-
-  SURVEY_TYPES_ORDER.forEach(t => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn';
-    btn.textContent = t;
-    btn.dataset.type = t;
-    btn.addEventListener('click', () => {
-      if (coachActiveTypes.has('__all__')) {
-        coachActiveTypes = new Set([t]);
-        allBtn.classList.remove('active');
-      } else if (coachActiveTypes.has(t)) {
-        coachActiveTypes.delete(t);
-        if (coachActiveTypes.size === 0) { coachActiveTypes.add('__all__'); allBtn.classList.add('active'); }
-      } else {
-        coachActiveTypes.add(t);
-      }
-      tf.querySelectorAll('.filter-btn[data-type!="__all__"]').forEach(b => {
-        b.classList.toggle('active', coachActiveTypes.has(b.dataset.type));
-      });
-      refreshCoachTab();
-    });
-    tf.appendChild(btn);
-  });
+  buildTypeFilters('coach-type-filters',
+    () => coachActiveTypes,
+    v  => { coachActiveTypes = v; },
+    refreshCoachTab
+  );
 }
 
 // ── Build Employee Select ─────────────────────────────────────────────────────
