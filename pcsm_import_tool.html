@@ -96,10 +96,10 @@ tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
     <div class="step" id="step-pdf" onclick="document.getElementById('pdf-input').click()">
       <div class="step-num">Step 1</div>
       <div class="step-icon">📄</div>
-      <div class="step-title">Upload Weekly PDF</div>
-      <div class="step-sub">Drop the PCSM survey PDF here or click to browse</div>
+      <div class="step-title">Upload Weekly PDF(s)</div>
+      <div class="step-sub">Select one or more PCSM survey PDFs — hold Ctrl/⌘ to pick multiple</div>
       <div class="step-file" id="pdf-name"></div>
-      <input type="file" id="pdf-input" accept=".pdf">
+      <input type="file" id="pdf-input" accept=".pdf" multiple>
     </div>
 
     <!-- Step 2: Excel -->
@@ -144,24 +144,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let pdfBytes  = null;
-let xlBytes   = null;
-let resultWb  = null;
-let toAddRows = [];
+let pdfFileList = []; // array of {name, buffer}
+let xlBytes     = null;
+let resultWb    = null;
+let toAddRows   = [];
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
-function setupDrop(zoneId, inputId, handler) {
-  const zone  = document.getElementById(zoneId);
-  const input = document.getElementById(inputId);
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', ()=> zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('drag-over');
-    if (e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]);
-  });
-  input.addEventListener('change', e => { if (e.target.files[0]) handler(e.target.files[0]); });
-}
-
 function readFileAsArrayBuffer(file) {
   return new Promise((res, rej) => {
     const fr = new FileReader();
@@ -171,22 +159,67 @@ function readFileAsArrayBuffer(file) {
   });
 }
 
-setupDrop('step-pdf', 'pdf-input', async file => {
-  pdfBytes = await readFileAsArrayBuffer(file);
-  document.getElementById('step-pdf').classList.add('done');
-  document.getElementById('pdf-name').textContent = '✓ ' + file.name;
-  checkReady();
+// PDF zone — supports multiple files
+const pdfZone  = document.getElementById('step-pdf');
+const pdfInput = document.getElementById('pdf-input');
+pdfZone.addEventListener('dragover', e => { e.preventDefault(); pdfZone.classList.add('drag-over'); });
+pdfZone.addEventListener('dragleave', () => pdfZone.classList.remove('drag-over'));
+pdfZone.addEventListener('drop', async e => {
+  e.preventDefault(); pdfZone.classList.remove('drag-over');
+  await handlePDFFiles(e.dataTransfer.files);
+});
+pdfInput.addEventListener('change', async e => {
+  await handlePDFFiles(e.target.files);
 });
 
-setupDrop('step-xl', 'xl-input', async file => {
+async function handlePDFFiles(files) {
+  if (!files || files.length === 0) return;
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+    const buf = await readFileAsArrayBuffer(file);
+    // Replace if same name already loaded, otherwise append
+    const idx = pdfFileList.findIndex(f => f.name === file.name);
+    if (idx >= 0) pdfFileList[idx] = { name: file.name, buffer: buf };
+    else pdfFileList.push({ name: file.name, buffer: buf });
+  }
+  updatePDFLabel();
+  checkReady();
+}
+
+function updatePDFLabel() {
+  const nameEl = document.getElementById('pdf-name');
+  const zone   = document.getElementById('step-pdf');
+  if (pdfFileList.length === 0) {
+    nameEl.textContent = '';
+    zone.classList.remove('done');
+  } else {
+    nameEl.innerHTML = pdfFileList.map(f => '✓ ' + f.name).join('<br>');
+    zone.classList.add('done');
+  }
+}
+
+// Excel zone — single file
+const xlZone  = document.getElementById('step-xl');
+const xlInput = document.getElementById('xl-input');
+xlZone.addEventListener('dragover', e => { e.preventDefault(); xlZone.classList.add('drag-over'); });
+xlZone.addEventListener('dragleave', () => xlZone.classList.remove('drag-over'));
+xlZone.addEventListener('drop', async e => {
+  e.preventDefault(); xlZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) await handleXLFile(e.dataTransfer.files[0]);
+});
+xlInput.addEventListener('change', async e => {
+  if (e.target.files[0]) await handleXLFile(e.target.files[0]);
+});
+
+async function handleXLFile(file) {
   xlBytes = await readFileAsArrayBuffer(file);
   document.getElementById('step-xl').classList.add('done');
   document.getElementById('xl-name').textContent = '✓ ' + file.name;
   checkReady();
-});
+}
 
 function checkReady() {
-  document.getElementById('run-btn').disabled = !(pdfBytes && xlBytes);
+  document.getElementById('run-btn').disabled = !(pdfFileList.length > 0 && xlBytes);
 }
 
 // ── Logging ───────────────────────────────────────────────────────────────────
@@ -202,12 +235,12 @@ function log(msg, cls) {
 
 // ── PDF Parsing ───────────────────────────────────────────────────────────────
 
-async function parsePDF(arrayBuffer) {
+async function parsePDF(arrayBuffer, seenKeys) {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  log('PDF loaded — ' + pdf.numPages + ' pages', 'log-head');
+  log('  PDF loaded — ' + pdf.numPages + ' pages');
 
   const records = [];
-  const seenKeys = new Set(); // key = "EAID|YYYY-MM-DD" — same account can appear in multiple months
+  if (!seenKeys) seenKeys = new Set(); // key = "EAID|YYYY-MM-DD" — same account can appear in multiple months
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
@@ -581,9 +614,17 @@ async function runImport() {
   resultWb  = null;
 
   try {
-    log('Reading PDF...', 'log-head');
-    const pdfRecords = await parsePDF(pdfBytes);
-    log('Total unique records extracted from PDF: ' + pdfRecords.length, 'log-ok');
+    // Process all PDFs and combine records (dedup across files via shared seenKeys)
+    log('Reading ' + pdfFileList.length + ' PDF file(s)...', 'log-head');
+    const allPdfRecords = [];
+    const sharedSeenKeys = new Set();
+    for (const f of pdfFileList) {
+      log('— ' + f.name, 'log-head');
+      const recs = await parsePDF(f.buffer, sharedSeenKeys);
+      allPdfRecords.push(...recs);
+    }
+    const pdfRecords = allPdfRecords;
+    log('Total unique records extracted from all PDFs: ' + pdfRecords.length, 'log-ok');
 
     log('', '');
     log('Processing Excel workbook...', 'log-head');
@@ -649,7 +690,8 @@ function downloadResult() {
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
 function resetAll() {
-  pdfBytes = xlBytes = resultWb = null;
+  pdfFileList = [];
+  xlBytes = resultWb = null;
   toAddRows = [];
   ['step-pdf','step-xl'].forEach(id => document.getElementById(id).classList.remove('done'));
   document.getElementById('pdf-name').textContent = '';
