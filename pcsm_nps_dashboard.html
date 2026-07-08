@@ -131,7 +131,10 @@
       <button class="tab-btn active" id="tab-btn-overview" onclick="switchTab('overview')">Overview</button>
       <button class="tab-btn" id="tab-btn-employees" onclick="switchTab('employees')">By Employee</button>
     </div>
-    <button onclick="clearAndReupload()" style="margin-right:4px;padding:5px 14px;border-radius:6px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;" title="Upload a new file">&#8593; Upload New File</button>
+    <div style="display:flex;gap:8px;margin-right:4px;">
+      <button onclick="exportToExcel()" style="padding:5px 14px;border-radius:6px;border:1.5px solid var(--orange);background:#fff;font-size:12px;font-weight:600;color:var(--orange);cursor:pointer;" title="Export data to Excel">&#8595; Export to Excel</button>
+      <button onclick="clearAndReupload()" style="padding:5px 14px;border-radius:6px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;" title="Upload a new file">&#8593; Upload New File</button>
+    </div>
   </div>
 
   <!-- Overview Tab -->
@@ -1193,6 +1196,96 @@ function updateTable(rows) {
       });
     });
   }
+}
+
+// ── Export to Excel ───────────────────────────────────────────────────────────
+function exportToExcel() {
+  const wb = XLSX.utils.book_new();
+  const rows = getFilteredRows();
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  // ── Sheet 1: Overview Summary ──────────────────────────────────────────────
+  const overviewData = [['Period','Survey Type','NPS Score','Promoters %','Passives %','Detractors %','Total Responses']];
+
+  if (viewMode === 'quarterly') {
+    const byQ  = groupByQuarter(rows);
+    const byQT = groupByQuarterType(rows);
+    Object.keys(byQ).sort().forEach(qk => {
+      const res = calcNPS(byQ[qk]);
+      if (!res) return;
+      const pPct  = Math.round(res.promoters / res.total * 100);
+      const dPct  = Math.round(res.detractors / res.total * 100);
+      const paPct = 100 - pPct - dPct;
+      overviewData.push([fmtQuarter(qk), 'All Types', res.nps, pPct + '%', paPct + '%', dPct + '%', res.total]);
+      Object.keys(byQT[qk] || {}).sort().forEach(t => {
+        const tr = calcNPS(byQT[qk][t]);
+        if (!tr) return;
+        overviewData.push(['', t, tr.nps, Math.round(tr.promoters/tr.total*100)+'%', Math.round((tr.total-tr.promoters-tr.detractors)/tr.total*100)+'%', Math.round(tr.detractors/tr.total*100)+'%', tr.total]);
+      });
+    });
+  } else {
+    const byM  = {}, byMT = {};
+    rows.forEach(r => {
+      if (!byM[r.month]) byM[r.month] = [];
+      if (!byMT[r.month]) byMT[r.month] = {};
+      if (!byMT[r.month][r.surveyType]) byMT[r.month][r.surveyType] = [];
+      byM[r.month].push(r.score);
+      byMT[r.month][r.surveyType].push(r.score);
+    });
+    Object.keys(byM).sort().forEach(m => {
+      const parts = m.split('-');
+      const label = MONTH_NAMES[parseInt(parts[1],10)-1] + ' ' + parts[0];
+      const res = calcNPS(byM[m]);
+      if (!res) return;
+      overviewData.push([label, 'All Types', res.nps, Math.round(res.promoters/res.total*100)+'%', Math.round((res.total-res.promoters-res.detractors)/res.total*100)+'%', Math.round(res.detractors/res.total*100)+'%', res.total]);
+      Object.keys(byMT[m]).sort().forEach(t => {
+        const tr = calcNPS(byMT[m][t]);
+        if (!tr) return;
+        overviewData.push(['', t, tr.nps, Math.round(tr.promoters/tr.total*100)+'%', Math.round((tr.total-tr.promoters-tr.detractors)/tr.total*100)+'%', Math.round(tr.detractors/tr.total*100)+'%', tr.total]);
+      });
+    });
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(overviewData), 'Overview');
+
+  // ── Sheet 2: Employee Summary ──────────────────────────────────────────────
+  const empData = [['Employee','Survey Type','NPS Score','Promoters %','Passives %','Detractors %','Total Responses']];
+  const byEmp = {};
+  rows.forEach(r => {
+    const emp = String(r.owner || '').trim();
+    if (!emp) return;
+    if (!byEmp[emp]) byEmp[emp] = {};
+    if (!byEmp[emp][r.surveyType]) byEmp[emp][r.surveyType] = [];
+    byEmp[emp][r.surveyType].push(r.score);
+  });
+  const empList = Object.keys(byEmp).map(emp => {
+    const allScores = Object.values(byEmp[emp]).flat();
+    return { emp, res: calcNPS(allScores), byType: byEmp[emp] };
+  }).filter(e => e.res).sort((a,b) => b.res.nps - a.res.nps);
+
+  empList.forEach(({ emp, res, byType }) => {
+    empData.push([emp, 'All Types', res.nps, Math.round(res.promoters/res.total*100)+'%', Math.round((res.total-res.promoters-res.detractors)/res.total*100)+'%', Math.round(res.detractors/res.total*100)+'%', res.total]);
+    Object.keys(byType).sort().forEach(t => {
+      const tr = calcNPS(byType[t]);
+      if (!tr) return;
+      empData.push(['', t, tr.nps, Math.round(tr.promoters/tr.total*100)+'%', Math.round((tr.total-tr.promoters-tr.detractors)/tr.total*100)+'%', Math.round(tr.detractors/tr.total*100)+'%', tr.total]);
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(empData), 'By Employee');
+
+  // ── Sheet 3: Raw Data ──────────────────────────────────────────────────────
+  const rawData = [['Month','Year','Survey Type','Case Owner','Supervisor','Score','Category']];
+  rows.forEach(r => {
+    const parts = r.month.split('-');
+    const monthLabel = MONTH_NAMES[parseInt(parts[1],10)-1] + ' ' + parts[0];
+    const cat = r.score >= 9 ? 'Promoter' : r.score >= 7 ? 'Passive' : 'Detractor';
+    rawData.push([monthLabel, r.yr, r.surveyType, r.owner || '', r.supervisor || '', r.score, cat]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawData), 'Raw Data');
+
+  // ── Download ───────────────────────────────────────────────────────────────
+  const today = new Date();
+  const stamp = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  XLSX.writeFile(wb, 'PCSM_NPS_Dashboard_' + stamp + '.xlsx');
 }
 
 // ── Restore saved data on page load ──────────────────────────────────────────
