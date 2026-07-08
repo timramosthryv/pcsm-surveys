@@ -237,6 +237,14 @@
       </div>
       <span class="filter-label" style="margin-left:10px;">Year:</span>
       <select class="yr-select" id="emp-yr-filter" onchange="refreshEmployeeTab()"><option value="all">All Years</option></select>
+      <span class="filter-label" id="emp-mth-label" style="margin-left:10px;">Month:</span>
+      <select class="yr-select" id="emp-mth-filter" onchange="refreshEmployeeTab()">
+        <option value="all">All Months</option>
+        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+      </select>
       <span class="filter-label" id="emp-qtr-label" style="margin-left:10px;display:none;">Quarter:</span>
       <select class="yr-select" id="emp-qtr-filter" style="display:none;" onchange="refreshEmployeeTab()">
         <option value="all">All Quarters</option>
@@ -335,9 +343,13 @@ function setEmpViewMode(mode) {
   document.getElementById('emp-view-monthly').classList.toggle('active', mode === 'monthly');
   document.getElementById('emp-view-quarterly').classList.toggle('active', mode === 'quarterly');
   const showQtr = mode === 'quarterly';
+  const showMth = mode === 'monthly';
   document.getElementById('emp-qtr-filter').style.display = showQtr ? '' : 'none';
   document.getElementById('emp-qtr-label').style.display  = showQtr ? '' : 'none';
+  document.getElementById('emp-mth-filter').style.display = showMth ? '' : 'none';
+  document.getElementById('emp-mth-label').style.display  = showMth ? '' : 'none';
   if (!showQtr) document.getElementById('emp-qtr-filter').value = 'all';
+  if (!showMth) document.getElementById('emp-mth-filter').value = 'all';
   refreshEmployeeTab();
 }
 
@@ -533,8 +545,8 @@ function parseRows(raw) {
 // Maps known misspellings to the canonical correct name.
 // Pattern-based so it catches any variation automatically.
 const NAME_CORRECTIONS = [
-  { correct: 'Carla Miner-Lugunbyhl', pattern: /^carla\s+miner/i },
-  { correct: 'Julian Komimbin',       pattern: /^julian\s+kom/i  },
+  { correct: 'Carla Miner-Luginbyhl', pattern: /^carla\s+miner-luginbyh?l?$/i },
+  { correct: 'Julian Komimbin',       pattern: /^julian\s+ko[nm]bimbin$/i      },
 ];
 
 function normalizeName(name) {
@@ -729,8 +741,15 @@ function buildCoachSelect() {
   const sel = document.getElementById('coach-select');
   const currentVal = sel.value;
 
-  // Get unique coach (supervisor) names sorted alphabetically
-  const coaches = [...new Set(allRows.map(r => r.supervisor).filter(s => s && String(s).trim()))].sort((a, b) => String(a).localeCompare(String(b)));
+  // Invalid/blank supervisor values to exclude
+  const INVALID_COACH = new Set(['na', 'n/a', 'n\\a', 'none', 'unknown', '-', '']);
+
+  // Get unique coach (supervisor) names sorted alphabetically, excluding blanks/NA
+  const coaches = [...new Set(allRows.map(r => r.supervisor).filter(s => {
+    if (!s) return false;
+    const clean = String(s).trim();
+    return clean && !INVALID_COACH.has(clean.toLowerCase());
+  }))].sort((a, b) => String(a).localeCompare(String(b)));
 
   sel.innerHTML = '<option value="__all__">All Coaches</option>';
   coaches.forEach(coach => {
@@ -750,9 +769,13 @@ function buildCoachSelect() {
 function getEmpFilteredRows() {
   const yr  = document.getElementById('emp-yr-filter').value;
   const qtr = document.getElementById('emp-qtr-filter').value;
+  const mth = document.getElementById('emp-mth-filter').value;
   return allRows.filter(r => {
     if (yr !== 'all' && r.yr !== yr) return false;
     if (!empActiveTypes.has('__all__') && !empActiveTypes.has(r.surveyType)) return false;
+    if (empViewMode === 'monthly' && mth !== 'all') {
+      if (r.month.split('-')[1] !== mth) return false;
+    }
     if (empViewMode === 'quarterly' && qtr !== 'all') {
       const q = 'Q' + Math.ceil(parseInt(r.month.split('-')[1]) / 3);
       if (q !== qtr) return false;
@@ -1257,6 +1280,58 @@ function renderSingleCoach(rows, coachName, container) {
   });
 
   html += '</tbody></table></div></div>';
+
+  // ── Employee breakdown under this coach ────────────────────────────────────
+  const byEmp = {};
+  rows.forEach(r => {
+    const emp = String(r.owner || '').trim();
+    if (!emp) return;
+    if (!byEmp[emp]) byEmp[emp] = {};
+    if (!byEmp[emp][r.surveyType]) byEmp[emp][r.surveyType] = [];
+    byEmp[emp][r.surveyType].push(r.score);
+  });
+
+  const empEntries = Object.keys(byEmp).map(emp => {
+    const allScores = Object.values(byEmp[emp]).flat();
+    return { emp, res: calcNPS(allScores), byType: byEmp[emp] };
+  }).filter(e => e.res).sort((a, b) => b.res.nps - a.res.nps);
+
+  if (empEntries.length > 0) {
+    html += '<div class="card" style="margin-top:16px;">';
+    html += '<div class="card-title">Employees Reporting to ' + escHtml(coachName) + '</div>';
+    html += '<div class="nps-formula">NPS = % Promoters (9–10) − % Detractors (0–6) · Scale: −100 to +100</div><br>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>Employee</th><th>Survey Type</th><th>NPS Score</th><th>Promoters</th><th>Passives</th><th>Detractors</th><th>Total</th><th>Distribution</th>';
+    html += '</tr></thead><tbody>';
+
+    empEntries.forEach(({ emp, res, byType }) => {
+      const pPct  = Math.round(res.promoters / res.total * 100);
+      const dPct  = Math.round(res.detractors / res.total * 100);
+      const paPct = 100 - pPct - dPct;
+      const npsCol = res.nps >= 50 ? '#38A169' : res.nps >= 0 ? '#D69E2E' : '#E53E3E';
+      html += '<tr style="background:#EDF2F7;font-weight:600;">';
+      html += '<td>' + escHtml(emp) + '</td>';
+      html += '<td><em style="color:var(--muted);font-weight:400;font-size:11px;">ALL TYPES</em></td>';
+      html += '<td style="color:' + npsCol + ';font-weight:700;">' + (res.nps > 0 ? '+' : '') + res.nps + '</td>';
+      html += '<td>' + pPct + '%</td><td>' + paPct + '%</td><td>' + dPct + '%</td><td>' + res.total + '</td>';
+      html += '<td>' + npsBar(pPct, dPct) + '</td></tr>';
+      Object.keys(byType).sort().forEach(t => {
+        const tr = calcNPS(byType[t]);
+        if (!tr) return;
+        const tpPct  = Math.round(tr.promoters / tr.total * 100);
+        const tdPct  = Math.round(tr.detractors / tr.total * 100);
+        const tpaPct = 100 - tpPct - tdPct;
+        const tnpsCol = tr.nps >= 50 ? '#38A169' : tr.nps >= 0 ? '#D69E2E' : '#E53E3E';
+        html += '<tr>';
+        html += '<td></td><td style="padding-left:24px;color:#555;">' + escHtml(t) + '</td>';
+        html += '<td style="color:' + tnpsCol + ';font-weight:700;">' + (tr.nps > 0 ? '+' : '') + tr.nps + '</td>';
+        html += '<td>' + tpPct + '%</td><td>' + tpaPct + '%</td><td>' + tdPct + '%</td><td>' + tr.total + '</td>';
+        html += '<td>' + npsBar(tpPct, tdPct) + '</td></tr>';
+      });
+    });
+
+    html += '</tbody></table></div></div>';
+  }
 
   container.innerHTML = html;
 
