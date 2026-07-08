@@ -126,9 +126,12 @@
 <div class="main" id="main-content">
 
   <!-- Tab Bar -->
-  <div class="tab-bar">
-    <button class="tab-btn active" id="tab-btn-overview" onclick="switchTab('overview')">Overview</button>
-    <button class="tab-btn" id="tab-btn-employees" onclick="switchTab('employees')">By Employee</button>
+  <div class="tab-bar" style="justify-content:space-between;align-items:center;">
+    <div style="display:flex;">
+      <button class="tab-btn active" id="tab-btn-overview" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" id="tab-btn-employees" onclick="switchTab('employees')">By Employee</button>
+    </div>
+    <button onclick="clearAndReupload()" style="margin-right:4px;padding:5px 14px;border-radius:6px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;" title="Upload a new file">&#8593; Upload New File</button>
   </div>
 
   <!-- Overview Tab -->
@@ -376,11 +379,23 @@ function processFile(file) {
       buildDashboard();
       document.getElementById('upload-section').style.display = 'none';
       document.getElementById('main-content').classList.add('visible');
+      // Persist for next session
+      try {
+        localStorage.setItem('pcsm_dashboard_rows', JSON.stringify(allRows));
+        localStorage.setItem('pcsm_dashboard_types', JSON.stringify(SURVEY_TYPES_ORDER));
+      } catch(e) {}
     } catch(err) {
       alert('Could not read file: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+function clearAndReupload() {
+  try { localStorage.removeItem('pcsm_dashboard_rows'); localStorage.removeItem('pcsm_dashboard_types'); } catch(e) {}
+  document.getElementById('main-content').classList.remove('visible');
+  document.getElementById('upload-section').style.display = '';
+  fileInput.value = '';
 }
 
 // ── Date Parsing Helper ───────────────────────────────────────────────────────
@@ -1180,6 +1195,25 @@ function updateTable(rows) {
   }
 }
 
+// ── Restore saved data on page load ──────────────────────────────────────────
+(function() {
+  try {
+    const savedRows  = localStorage.getItem('pcsm_dashboard_rows');
+    const savedTypes = localStorage.getItem('pcsm_dashboard_types');
+    if (savedRows && savedTypes) {
+      const rows  = JSON.parse(savedRows);
+      const types = JSON.parse(savedTypes);
+      if (rows.length > 0) {
+        allRows = rows;
+        SURVEY_TYPES_ORDER.length = 0;
+        types.forEach(t => SURVEY_TYPES_ORDER.push(t));
+        buildDashboard();
+        document.getElementById('upload-section').style.display = 'none';
+        document.getElementById('main-content').classList.add('visible');
+      }
+    }
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>
