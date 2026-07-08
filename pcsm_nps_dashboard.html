@@ -89,6 +89,15 @@
   .nps-formula { font-size: 11px; color: var(--muted); margin-top: 4px; }
   .section-divider { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin: 20px 0 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
   .loading { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+
+  /* Tab bar */
+  .tab-bar { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:20px; }
+  .tab-btn { padding:10px 24px; border:none; background:none; font-size:13px; font-weight:600; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; transition:all 0.15s; }
+  .tab-btn.active { color:var(--navy); border-bottom-color:var(--orange); }
+  .tab-btn:hover:not(.active) { color:var(--navy); background:#f7f7f7; }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+  .emp-select { padding:6px 12px; border-radius:6px; border:1.5px solid var(--border); font-size:12px; font-weight:600; color:var(--navy); background:#fff; cursor:pointer; min-width:180px; }
 </style>
 </head>
 <body>
@@ -116,86 +125,122 @@
 <!-- Main Dashboard -->
 <div class="main" id="main-content">
 
-  <!-- Filters -->
-  <div class="filters" style="margin-top:0; padding-top:8px;">
-    <span class="filter-label">View:</span>
-    <div class="view-toggle">
-      <button id="view-monthly" class="active" onclick="setViewMode('monthly')">Monthly</button>
-      <button id="view-quarterly" onclick="setViewMode('quarterly')">Quarterly</button>
-    </div>
-    <span class="filter-label" style="margin-left:10px;">Year:</span>
-    <select class="yr-select" id="yr-filter"><option value="all">All Years</option></select>
-    <span class="filter-label" id="qtr-label" style="margin-left:10px;display:none;">Quarter:</span>
-    <select class="yr-select" id="qtr-filter" style="display:none;">
-      <option value="all">All Quarters</option>
-      <option value="Q1">Q1 (Jan–Mar)</option>
-      <option value="Q2">Q2 (Apr–Jun)</option>
-      <option value="Q3">Q3 (Jul–Sep)</option>
-      <option value="Q4">Q4 (Oct–Dec)</option>
-    </select>
-    <span class="filter-label" style="margin-left:10px;">Survey Type:</span>
-    <div id="type-filters"></div>
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-btn-overview" onclick="switchTab('overview')">Overview</button>
+    <button class="tab-btn" id="tab-btn-employees" onclick="switchTab('employees')">By Employee</button>
   </div>
 
-  <!-- KPI Row -->
-  <div class="kpi-row" id="kpi-row">
-    <div class="kpi" id="kpi-nps">
-      <div class="kpi-label">Overall NPS</div>
-      <div class="kpi-value" id="kpi-nps-val">--</div>
-      <div class="kpi-sub" id="kpi-nps-sub">All time</div>
-    </div>
-    <div class="kpi" id="kpi-surveys">
-      <div class="kpi-label">Total Surveys</div>
-      <div class="kpi-value" id="kpi-surveys-val">--</div>
-      <div class="kpi-sub" id="kpi-surveys-sub"></div>
-    </div>
-    <div class="kpi green">
-      <div class="kpi-label">Promoters (9–10)</div>
-      <div class="kpi-value" id="kpi-promoters">--%</div>
-      <div class="kpi-sub" id="kpi-promoters-n"></div>
-    </div>
-    <div class="kpi red">
-      <div class="kpi-label">Detractors (0–6)</div>
-      <div class="kpi-value" id="kpi-detractors">--%</div>
-      <div class="kpi-sub" id="kpi-detractors-n"></div>
-    </div>
-  </div>
+  <!-- Overview Tab -->
+  <div id="tab-overview" class="tab-panel active">
 
-  <!-- Charts -->
-  <div class="charts-row">
+    <!-- Filters -->
+    <div class="filters" style="margin-top:0; padding-top:8px;">
+      <span class="filter-label">View:</span>
+      <div class="view-toggle">
+        <button id="view-monthly" class="active" onclick="setViewMode('monthly')">Monthly</button>
+        <button id="view-quarterly" onclick="setViewMode('quarterly')">Quarterly</button>
+      </div>
+      <span class="filter-label" style="margin-left:10px;">Year:</span>
+      <select class="yr-select" id="yr-filter"><option value="all">All Years</option></select>
+      <span class="filter-label" id="qtr-label" style="margin-left:10px;display:none;">Quarter:</span>
+      <select class="yr-select" id="qtr-filter" style="display:none;">
+        <option value="all">All Quarters</option>
+        <option value="Q1">Q1 (Jan–Mar)</option>
+        <option value="Q2">Q2 (Apr–Jun)</option>
+        <option value="Q3">Q3 (Jul–Sep)</option>
+        <option value="Q4">Q4 (Oct–Dec)</option>
+      </select>
+      <span class="filter-label" style="margin-left:10px;">Survey Type:</span>
+      <div id="type-filters"></div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-row" id="kpi-row">
+      <div class="kpi" id="kpi-nps">
+        <div class="kpi-label">Overall NPS</div>
+        <div class="kpi-value" id="kpi-nps-val">--</div>
+        <div class="kpi-sub" id="kpi-nps-sub">All time</div>
+      </div>
+      <div class="kpi" id="kpi-surveys">
+        <div class="kpi-label">Total Surveys</div>
+        <div class="kpi-value" id="kpi-surveys-val">--</div>
+        <div class="kpi-sub" id="kpi-surveys-sub"></div>
+      </div>
+      <div class="kpi green">
+        <div class="kpi-label">Promoters (9–10)</div>
+        <div class="kpi-value" id="kpi-promoters">--%</div>
+        <div class="kpi-sub" id="kpi-promoters-n"></div>
+      </div>
+      <div class="kpi red">
+        <div class="kpi-label">Detractors (0–6)</div>
+        <div class="kpi-value" id="kpi-detractors">--%</div>
+        <div class="kpi-sub" id="kpi-detractors-n"></div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-title" id="trend-title">Monthly NPS Trend</div>
+        <canvas id="trend-chart" height="90"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">NPS by Survey Type</div>
+        <canvas id="type-chart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Table -->
     <div class="card">
-      <div class="card-title" id="trend-title">Monthly NPS Trend</div>
-      <canvas id="trend-chart" height="90"></canvas>
+      <div class="card-title" id="table-title">Monthly Breakdown</div>
+      <div class="nps-formula">NPS = % Promoters (9–10) − % Detractors (0–6) · Scale: −100 to +100</div>
+      <br>
+      <div class="table-wrap">
+        <table id="monthly-table">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Survey Type</th>
+              <th>NPS Score</th>
+              <th>Promoters</th>
+              <th>Passives</th>
+              <th>Detractors</th>
+              <th>Total</th>
+              <th>Distribution</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-title">NPS by Survey Type</div>
-      <canvas id="type-chart" height="200"></canvas>
-    </div>
-  </div>
 
-  <!-- Table -->
-  <div class="card">
-    <div class="card-title" id="table-title">Monthly Breakdown</div>
-    <div class="nps-formula">NPS = % Promoters (9–10) − % Detractors (0–6) · Scale: −100 to +100</div>
-    <br>
-    <div class="table-wrap">
-      <table id="monthly-table">
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th>Survey Type</th>
-            <th>NPS Score</th>
-            <th>Promoters</th>
-            <th>Passives</th>
-            <th>Detractors</th>
-            <th>Total</th>
-            <th>Distribution</th>
-          </tr>
-        </thead>
-        <tbody id="table-body"></tbody>
-      </table>
+  </div><!-- /tab-overview -->
+
+  <!-- By Employee Tab -->
+  <div id="tab-employees" class="tab-panel">
+
+    <!-- Employee Filters -->
+    <div class="filters" style="margin-top:0; padding-top:8px;">
+      <span class="filter-label">View:</span>
+      <div class="view-toggle">
+        <button id="emp-view-monthly" class="active" onclick="setEmpViewMode('monthly')">Monthly</button>
+        <button id="emp-view-quarterly" onclick="setEmpViewMode('quarterly')">Quarterly</button>
+      </div>
+      <span class="filter-label" style="margin-left:10px;">Year:</span>
+      <select class="yr-select" id="emp-yr-filter" onchange="refreshEmployeeTab()"><option value="all">All Years</option></select>
+      <span class="filter-label" style="margin-left:10px;">Survey Type:</span>
+      <div id="emp-type-filters"></div>
+      <span class="filter-label" style="margin-left:10px;">Employee:</span>
+      <select class="emp-select" id="emp-select" onchange="refreshEmployeeTab()">
+        <option value="__all__">All Employees</option>
+      </select>
     </div>
-  </div>
+
+    <!-- Employee Content -->
+    <div id="emp-content"></div>
+
+  </div><!-- /tab-employees -->
 
 </div>
 
@@ -207,9 +252,36 @@ Chart.register(ChartDataLabels);
 let allRows = [];
 let trendChart = null;
 let typeChart  = null;
+let empTrendChart = null;
 let activeTypes = new Set(['__all__']);
+let empActiveTypes = new Set(['__all__']);
 const SURVEY_TYPES_ORDER = [];
 let viewMode = 'monthly'; // 'monthly' | 'quarterly'
+let empViewMode = 'monthly'; // independent toggle for employee tab
+
+// ── Tab Switching ─────────────────────────────────────────────────────────────
+function switchTab(tabName) {
+  // Hide all panels
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  // Deactivate all tab buttons
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+  // Activate selected tab
+  document.getElementById('tab-' + tabName).classList.add('active');
+  document.getElementById('tab-btn-' + tabName).classList.add('active');
+
+  if (tabName === 'employees') {
+    refreshEmployeeTab();
+  }
+}
+
+// ── Employee View Mode ────────────────────────────────────────────────────────
+function setEmpViewMode(mode) {
+  empViewMode = mode;
+  document.getElementById('emp-view-monthly').classList.toggle('active', mode === 'monthly');
+  document.getElementById('emp-view-quarterly').classList.toggle('active', mode === 'quarterly');
+  refreshEmployeeTab();
+}
 
 // ── View Mode ─────────────────────────────────────────────────────────────────
 function setViewMode(mode) {
@@ -414,7 +486,7 @@ function getFilteredRows() {
 
 // ── Build Dashboard ───────────────────────────────────────────────────────────
 function buildDashboard() {
-  // Populate year filter
+  // Populate year filter (overview tab)
   const years = [...new Set(allRows.map(r => r.yr))].sort();
   const yrSel = document.getElementById('yr-filter');
   yrSel.innerHTML = '<option value="all">All Years</option>';
@@ -422,7 +494,7 @@ function buildDashboard() {
   yrSel.addEventListener('change', refresh);
   document.getElementById('qtr-filter').addEventListener('change', refresh);
 
-  // Populate type filters
+  // Populate type filters (overview tab)
   const tf = document.getElementById('type-filters');
   tf.innerHTML = '';
   const allBtn = document.createElement('button');
@@ -460,7 +532,371 @@ function buildDashboard() {
     tf.appendChild(btn);
   });
 
+  // Populate employee tab year filter
+  const empYrSel = document.getElementById('emp-yr-filter');
+  empYrSel.innerHTML = '<option value="all">All Years</option>';
+  years.forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = y; empYrSel.appendChild(o); });
+
+  // Populate employee tab type filters
+  buildEmpTypeFilters();
+
+  // Populate employee dropdown
+  buildEmployeeSelect();
+
   refresh();
+}
+
+// ── Employee Type Filters ─────────────────────────────────────────────────────
+function buildEmpTypeFilters() {
+  const tf = document.getElementById('emp-type-filters');
+  tf.innerHTML = '';
+  empActiveTypes = new Set(['__all__']);
+
+  const allBtn = document.createElement('button');
+  allBtn.className = 'filter-btn active';
+  allBtn.textContent = 'All';
+  allBtn.dataset.type = '__all__';
+  allBtn.addEventListener('click', () => {
+    empActiveTypes = new Set(['__all__']);
+    tf.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    allBtn.classList.add('active');
+    refreshEmployeeTab();
+  });
+  tf.appendChild(allBtn);
+
+  SURVEY_TYPES_ORDER.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.textContent = t;
+    btn.dataset.type = t;
+    btn.addEventListener('click', () => {
+      if (empActiveTypes.has('__all__')) {
+        empActiveTypes = new Set([t]);
+        allBtn.classList.remove('active');
+      } else if (empActiveTypes.has(t)) {
+        empActiveTypes.delete(t);
+        if (empActiveTypes.size === 0) { empActiveTypes.add('__all__'); allBtn.classList.add('active'); }
+      } else {
+        empActiveTypes.add(t);
+      }
+      tf.querySelectorAll('.filter-btn[data-type!="__all__"]').forEach(b => {
+        b.classList.toggle('active', empActiveTypes.has(b.dataset.type));
+      });
+      refreshEmployeeTab();
+    });
+    tf.appendChild(btn);
+  });
+}
+
+// ── Build Employee Select ─────────────────────────────────────────────────────
+function buildEmployeeSelect() {
+  const sel = document.getElementById('emp-select');
+  const currentVal = sel.value;
+
+  // Get unique employee names sorted alphabetically
+  const employees = [...new Set(allRows.map(r => r.owner).filter(o => o && String(o).trim()))].sort((a, b) => String(a).localeCompare(String(b)));
+
+  sel.innerHTML = '<option value="__all__">All Employees</option>';
+  employees.forEach(emp => {
+    const o = document.createElement('option');
+    o.value = emp;
+    o.textContent = emp;
+    sel.appendChild(o);
+  });
+
+  // Restore previous selection if still valid
+  if (currentVal && [...sel.options].some(o => o.value === currentVal)) {
+    sel.value = currentVal;
+  }
+}
+
+// ── Employee Filtered Rows ────────────────────────────────────────────────────
+function getEmpFilteredRows() {
+  const yr = document.getElementById('emp-yr-filter').value;
+  return allRows.filter(r => {
+    if (yr !== 'all' && r.yr !== yr) return false;
+    if (!empActiveTypes.has('__all__') && !empActiveTypes.has(r.surveyType)) return false;
+    return true;
+  });
+}
+
+// ── Refresh Employee Tab ──────────────────────────────────────────────────────
+function refreshEmployeeTab() {
+  const empSel = document.getElementById('emp-select').value;
+  const rows = getEmpFilteredRows();
+  const container = document.getElementById('emp-content');
+
+  if (empSel === '__all__') {
+    renderAllEmployeesTable(rows, container);
+  } else {
+    renderSingleEmployee(rows.filter(r => String(r.owner) === empSel), empSel, container);
+  }
+}
+
+// ── Render All Employees Summary Table ───────────────────────────────────────
+function renderAllEmployeesTable(rows, container) {
+  // Group by employee
+  const byEmp = {};
+  rows.forEach(r => {
+    const emp = String(r.owner || '').trim();
+    if (!emp) return;
+    if (!byEmp[emp]) byEmp[emp] = {};
+    if (!byEmp[emp][r.surveyType]) byEmp[emp][r.surveyType] = [];
+    byEmp[emp][r.surveyType].push(r.score);
+  });
+
+  // Calculate overall NPS per employee and sort descending
+  const empList = Object.keys(byEmp).map(emp => {
+    const allScores = Object.values(byEmp[emp]).flat();
+    const res = calcNPS(allScores);
+    return { emp, res, byType: byEmp[emp] };
+  }).filter(e => e.res !== null).sort((a, b) => b.res.nps - a.res.nps);
+
+  if (empList.length === 0) {
+    container.innerHTML = '<div class="loading">No data matches the current filters.</div>';
+    return;
+  }
+
+  let html = '<div class="card"><div class="card-title">Employee NPS Summary</div>';
+  html += '<div class="nps-formula">NPS = % Promoters (9–10) − % Detractors (0–6) · Scale: −100 to +100</div><br>';
+  html += '<div class="table-wrap"><table><thead><tr>';
+  html += '<th>Employee</th><th>Survey Type</th><th>NPS Score</th><th>Promoters</th><th>Passives</th><th>Detractors</th><th>Total</th><th>Distribution</th>';
+  html += '</tr></thead><tbody>';
+
+  empList.forEach(({ emp, res, byType }) => {
+    // Summary row for the employee (overall)
+    const pPct = Math.round((res.promoters / res.total) * 100);
+    const dPct = Math.round((res.detractors / res.total) * 100);
+    const paPct = Math.round(((res.total - res.promoters - res.detractors) / res.total) * 100);
+    const npsCol = res.nps >= 50 ? '#38A169' : res.nps >= 0 ? '#D69E2E' : '#E53E3E';
+    html += '<tr style="background:#EDF2F7;font-weight:600;">';
+    html += '<td>' + escHtml(emp) + '</td>';
+    html += '<td><em style="color:var(--muted);font-weight:400;font-size:11px;">ALL TYPES</em></td>';
+    html += '<td style="color:' + npsCol + ';font-weight:700;">' + (res.nps > 0 ? '+' : '') + res.nps + '</td>';
+    html += '<td>' + pPct + '%</td>';
+    html += '<td>' + paPct + '%</td>';
+    html += '<td>' + dPct + '%</td>';
+    html += '<td>' + res.total + '</td>';
+    html += '<td>' + npsBar(pPct, dPct) + '</td>';
+    html += '</tr>';
+
+    // Per survey type rows
+    const types = Object.keys(byType).sort();
+    types.forEach(t => {
+      const tr = calcNPS(byType[t]);
+      if (!tr) return;
+      const tpPct = Math.round((tr.promoters / tr.total) * 100);
+      const tdPct = Math.round((tr.detractors / tr.total) * 100);
+      const tpaPct = Math.round(((tr.total - tr.promoters - tr.detractors) / tr.total) * 100);
+      const tnpsCol = tr.nps >= 50 ? '#38A169' : tr.nps >= 0 ? '#D69E2E' : '#E53E3E';
+      html += '<tr>';
+      html += '<td></td>';
+      html += '<td style="padding-left:24px;color:#555;">' + escHtml(t) + '</td>';
+      html += '<td style="color:' + tnpsCol + ';font-weight:700;">' + (tr.nps > 0 ? '+' : '') + tr.nps + '</td>';
+      html += '<td>' + tpPct + '%</td>';
+      html += '<td>' + tpaPct + '%</td>';
+      html += '<td>' + tdPct + '%</td>';
+      html += '<td>' + tr.total + '</td>';
+      html += '<td>' + npsBar(tpPct, tdPct) + '</td>';
+      html += '</tr>';
+    });
+  });
+
+  html += '</tbody></table></div></div>';
+  container.innerHTML = html;
+}
+
+// ── Render Single Employee ────────────────────────────────────────────────────
+function renderSingleEmployee(rows, empName, container) {
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="loading">No data for this employee with the current filters.</div>';
+    return;
+  }
+
+  // Build trend data
+  let periods, npsData, labels, tooltipData;
+
+  if (empViewMode === 'quarterly') {
+    const byQ = {};
+    rows.forEach(r => {
+      const qk = monthToQuarter(r.month);
+      if (!byQ[qk]) byQ[qk] = [];
+      byQ[qk].push(r.score);
+    });
+    periods = Object.keys(byQ).sort();
+    npsData = periods.map(q => { const res = calcNPS(byQ[q]); return res ? res.nps : null; });
+    labels  = periods.map(q => fmtQuarter(q));
+    tooltipData = periods.map(q => calcNPS(byQ[q]));
+  } else {
+    const byM = {};
+    rows.forEach(r => {
+      if (!byM[r.month]) byM[r.month] = [];
+      byM[r.month].push(r.score);
+    });
+    periods = Object.keys(byM).sort();
+    npsData = periods.map(m => { const res = calcNPS(byM[m]); return res ? res.nps : null; });
+    labels  = periods.map(m => {
+      const [y, mo] = m.split('-');
+      return new Date(parseInt(y), parseInt(mo)-1, 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+    });
+    tooltipData = periods.map(m => {
+      const bm = {};
+      rows.forEach(r => { if (!bm[r.month]) bm[r.month]=[]; bm[r.month].push(r.score); });
+      return calcNPS(bm[m]);
+    });
+  }
+
+  // Build breakdown table data
+  let breakdownRows = [];
+  if (empViewMode === 'quarterly') {
+    const byQT = {};
+    const byQ  = {};
+    rows.forEach(r => {
+      const qk = monthToQuarter(r.month);
+      if (!byQ[qk]) byQ[qk] = [];
+      byQ[qk].push(r.score);
+      if (!byQT[qk]) byQT[qk] = {};
+      if (!byQT[qk][r.surveyType]) byQT[qk][r.surveyType] = [];
+      byQT[qk][r.surveyType].push(r.score);
+    });
+    Object.keys(byQ).sort().reverse().forEach(qk => {
+      breakdownRows.push({ period: fmtQuarter(qk), type: null, res: calcNPS(byQ[qk]), isSummary: true });
+      Object.keys(byQT[qk] || {}).sort().forEach(t => {
+        breakdownRows.push({ period: '', type: t, res: calcNPS(byQT[qk][t]), isSummary: false });
+      });
+    });
+  } else {
+    const byMT = {};
+    const byM  = {};
+    rows.forEach(r => {
+      if (!byM[r.month]) byM[r.month] = [];
+      if (!byMT[r.month]) byMT[r.month] = {};
+      if (!byMT[r.month][r.surveyType]) byMT[r.month][r.surveyType] = [];
+      byM[r.month].push(r.score);
+      byMT[r.month][r.surveyType].push(r.score);
+    });
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    Object.keys(byM).sort().reverse().forEach(m => {
+      const parts = m.split('-');
+      const label = MONTH_NAMES[parseInt(parts[1], 10) - 1] + ' ' + parts[0];
+      breakdownRows.push({ period: label, type: null, res: calcNPS(byM[m]), isSummary: true });
+      Object.keys(byMT[m] || {}).sort().forEach(t => {
+        breakdownRows.push({ period: '', type: t, res: calcNPS(byMT[m][t]), isSummary: false });
+      });
+    });
+  }
+
+  const periodLabel = empViewMode === 'quarterly' ? 'Quarter' : 'Month';
+
+  let html = '';
+  // Trend chart card
+  html += '<div class="card" style="margin-bottom:16px;">';
+  html += '<div class="card-title">' + escHtml(empName) + ' — NPS Trend (' + (empViewMode === 'quarterly' ? 'Quarterly' : 'Monthly') + ')</div>';
+  html += '<canvas id="emp-trend-chart" height="90"></canvas>';
+  html += '</div>';
+
+  // Breakdown table card
+  html += '<div class="card">';
+  html += '<div class="card-title">' + escHtml(empName) + ' — Period Breakdown</div>';
+  html += '<div class="nps-formula">NPS = % Promoters (9–10) − % Detractors (0–6) · Scale: −100 to +100</div><br>';
+  html += '<div class="table-wrap"><table><thead><tr>';
+  html += '<th>' + periodLabel + '</th><th>Survey Type</th><th>NPS Score</th><th>Promoters</th><th>Passives</th><th>Detractors</th><th>Total</th><th>Distribution</th>';
+  html += '</tr></thead><tbody>';
+
+  breakdownRows.forEach(row => {
+    if (!row.res) return;
+    const res = row.res;
+    const pPct  = Math.round((res.promoters / res.total) * 100);
+    const dPct  = Math.round((res.detractors / res.total) * 100);
+    const paPct = Math.round(((res.total - res.promoters - res.detractors) / res.total) * 100);
+    const npsCol = res.nps >= 50 ? '#38A169' : res.nps >= 0 ? '#D69E2E' : '#E53E3E';
+    const bg = row.isSummary ? 'background:#EDF2F7;font-weight:600;' : '';
+    html += '<tr style="' + bg + '">';
+    html += '<td>' + escHtml(row.period) + '</td>';
+    if (row.isSummary) {
+      html += '<td><em style="color:var(--muted);font-weight:400;font-size:11px;">ALL TYPES</em></td>';
+    } else {
+      html += '<td style="padding-left:24px;color:#555;">' + escHtml(row.type) + '</td>';
+    }
+    html += '<td style="color:' + npsCol + ';font-weight:700;">' + (res.nps > 0 ? '+' : '') + res.nps + '</td>';
+    html += '<td>' + pPct + '%</td>';
+    html += '<td>' + paPct + '%</td>';
+    html += '<td>' + dPct + '%</td>';
+    html += '<td>' + res.total + '</td>';
+    html += '<td>' + npsBar(pPct, dPct) + '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div></div>';
+
+  container.innerHTML = html;
+
+  // Draw the trend chart after DOM is updated
+  if (empTrendChart) { empTrendChart.destroy(); empTrendChart = null; }
+  const ctx = document.getElementById('emp-trend-chart').getContext('2d');
+  empTrendChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'NPS',
+        data: npsData,
+        borderColor: '#F06623',
+        backgroundColor: 'rgba(240,102,35,0.08)',
+        borderWidth: 2.5,
+        tension: 0.35,
+        pointRadius: 4,
+        pointBackgroundColor: npsData.map(v => v === null ? '#999' : (v >= 50 ? '#38A169' : v >= 0 ? '#D69E2E' : '#E53E3E')),
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1.5,
+        fill: true,
+        spanGaps: true
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          display: true,
+          align: 'top',
+          anchor: 'top',
+          formatter: v => v === null ? '' : (v > 0 ? '+' : '') + v,
+          color: ctx => npsColor(ctx.dataset.data[ctx.dataIndex]),
+          font: { size: 11, weight: '700' },
+          padding: { bottom: 2 }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' NPS: ' + (ctx.parsed.y > 0 ? '+' : '') + ctx.parsed.y,
+            afterLabel: ctx => {
+              const res = tooltipData[ctx.dataIndex];
+              return res ? [
+                'Promoters: ' + res.promoters + ' (' + Math.round(res.promoters/res.total*100) + '%)',
+                'Passives:  ' + res.passives,
+                'Detractors: ' + res.detractors + ' (' + Math.round(res.detractors/res.total*100) + '%)',
+                'Total: ' + res.total
+              ] : [];
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: -100, max: 100,
+          grid: { color: '#EDF2F7' },
+          ticks: { callback: v => (v > 0 ? '+' : '') + v, font: { size: 11 } }
+        },
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// ── Utility: HTML Escape ──────────────────────────────────────────────────────
+function escHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function refresh() {
