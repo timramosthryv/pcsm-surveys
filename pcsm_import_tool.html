@@ -392,7 +392,7 @@ function extractFromPage(content, seenKeys) {
     // Parse dates
     const startDt    = parseDate(startDate);
     const recordedDt = parseDate(recordedDate);
-    if (!startDt) continue;
+    if (!startDt && !recordedDt) continue;
 
     // Supervisor (manager) — fix camelCase
     let supervisor = fixCamelCase(managerName);
@@ -412,7 +412,7 @@ function extractFromPage(content, seenKeys) {
 
     seenKeys.add(dedupKey);
     records.push({
-      date:           startDt,
+      date:           recordedDt || startDt,
       eaid:           eid,
       surveyType:     currentSection,
       caseOwner:      caseOwner,
